@@ -68,6 +68,7 @@ export class Collector {
         switch (element.type) {
           case 'text': return element.attrs.content;
           case 'img': return element.attrs.summary === '[动画表情]' ? '[gif]' : `[${element.type}]`;
+          case 'at': return `[at:${element.attrs.id}]`;
           default: return `[${element.type}]`;
         }
       }).join('');
