@@ -2,6 +2,7 @@ import { Context, Schema } from 'koishi'
 import { Collector } from './Collector'
 import { CmdStat } from './CmdStat'
 
+// 插件使用说明
 export const usage = `
 <div style="border-radius: 10px; border: 1px solid #ddd; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
   <h2 style="margin-top: 0; color: #4a6ee0;">📌 插件说明</h2>
@@ -16,26 +17,24 @@ export const usage = `
 `
 
 export const name = 'chat-analyse'
-
+// 插件依赖的服务
+export const using = ['database', 'puppeteer']
+// 插件配置项接口
 export interface Config {}
-
+// 插件配置项的 Schema 定义
 export const Config: Schema<Config> = Schema.object({})
 
-export const using = ['database', 'puppeteer']
-
 /**
- * Koishi 插件的入口函数。
- * @param ctx {Context} Koishi 的上下文对象，用于访问框架核心功能。
+ * Koishi 插件主入口函数。
+ * @param ctx {Context} Koishi 上下文，用于访问和扩展框架功能。
  */
 export function apply(ctx: Context) {
-  // 实例化数据收集器，用于监听和存储消息
+  // 实例化数据收集器
   new Collector(ctx)
-  // 实例化命令服务，用于处理用户交互
+  // 实例化命令统计与服务提供者
   const cmd = new CmdStat(ctx)
-
   // 注册主命令 `analyse`
   const analyse = ctx.command('analyse', '聊天记录分析')
-
-  // 注册子命令
+  // 注册所有子命令
   cmd.registerCommands(analyse);
 }
