@@ -32,6 +32,7 @@ export class Collector {
   private msgBuffer: Omit<Tables['analyse_msg'], 'id'>[] = [];
   private flushInterval: NodeJS.Timeout;
   private nameCache = new Map<string, { name: string, timestamp: number }>();
+  private pendingNameRequests = new Map<string, Promise<void>>();
 
   /**
    * @constructor
@@ -77,7 +78,7 @@ export class Collector {
     const { userId, channelId, guildId, content, timestamp, argv, elements } = session;
     const effectiveId = channelId || guildId;
     if (!effectiveId || !userId || !timestamp) return;
-    this.updateNameIfNeeded(session, effectiveId);
+    await this.updateNameIfNeeded(session, effectiveId);
     const isCommand = !!argv?.command;
     const type = isCommand ? argv.command.name : this.summarizeElementTypes(elements);
     const finalContent = isCommand ? content : this.sanitizeContent(elements);
@@ -100,9 +101,6 @@ export class Collector {
 
   /**
    * 从消息元素中提取并汇总类型。
-   * @example
-   * // returns "[text][img]"
-   * summarizeElementTypes([{type: 'text'}, {type: 'img'}])
    */
   private summarizeElementTypes(elements: Element[]): string {
     return [...new Set(elements.map(e => `[${e.type}]`))].join('');
@@ -139,28 +137,61 @@ export class Collector {
 
   /**
    * 检查并更新用户和群组的名称信息。
-   * 如果名称不在缓存或缓存已过期 (超过24小时)，则从 API 获取并更新到数据库。
    */
-  private async updateNameIfNeeded(session: Session, effectiveId: string) {
-    const { userId, guildId, bot } = session;
+  private async updateNameIfNeeded(session: Session, effectiveId: string): Promise<void> {
+    const { userId } = session;
+    if (!userId) return;
     const cacheKey = `${effectiveId}:${userId}`;
+
+    if (this.pendingNameRequests.has(cacheKey)) return this.pendingNameRequests.get(cacheKey);
+
     const cached = this.nameCache.get(cacheKey);
     const CACHE_EXPIRATION = 24 * 60 * 60 * 1000;
     if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRATION)) return;
+
+    const promise = this.fetchAndUpdateNames(session, effectiveId, cacheKey);
+    this.pendingNameRequests.set(cacheKey, promise);
+
     try {
+      await promise;
+    } finally {
+      this.pendingNameRequests.delete(cacheKey);
+    }
+  }
+
+  /**
+   * @private
+   * 封装了实际获取和更新名称的异步逻辑。
+   */
+  private async fetchAndUpdateNames(session: Session, effectiveId: string, cacheKey: string): Promise<void> {
+    try {
+      const { userId, guildId, bot } = session;
+
       const [guild, member] = await Promise.all([
-        bot.getGuild(guildId),
-        bot.getGuildMember(guildId, userId),
+        guildId ? bot.getGuild(guildId).catch(() => null) : Promise.resolve(null),
+        guildId && userId ? bot.getGuildMember(guildId, userId).catch(() => null) : Promise.resolve(null),
       ]);
+
       const channelName = guild?.name;
       const userName = member?.nick || member?.name;
-      if (!channelName || !userName) return;
-      await this.ctx.database.upsert('analyse_name', () => ([{
-        channelId: effectiveId, channelName, userId, userName,
-      }]));
+
+      // 如果无法获取到任何一个名称，直接将失败结果缓存24小时并返回
+      if (!channelName || !userName) {
+        this.nameCache.set(cacheKey, { name: null, timestamp: Date.now() });
+        return;
+      }
+
+      await this.ctx.database.upsert('analyse_name', [{
+        channelId: effectiveId,
+        userId: userId,
+        channelName: channelName,
+        userName: userName,
+      }]);
+
+      // 成功后，更新内存缓存
       this.nameCache.set(cacheKey, { name: userName, timestamp: Date.now() });
     } catch (error) {
-      this.ctx.logger.warn('更新用户/群组名称失败:', error)
+      this.nameCache.set(cacheKey, { name: null, timestamp: Date.now() });
     }
   }
 }

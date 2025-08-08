@@ -33,7 +33,7 @@ export class CmdStat {
 
     this.ctx.on('command/before-execute', async ({ command, session }) => {
       const { userId, guildId } = session;
-      if (!guildId || !userId || command.name === 'analyse' || command.parent?.name === 'analyse') return;
+      if (!guildId || !userId) return;
 
       const commandName = command.name;
       const query = { channelId: guildId, userId, command: commandName };
@@ -119,36 +119,38 @@ export class CmdStat {
     if (guildId) query.channelId = guildId;
     if (userId) query.userId = userId;
 
-    const records = await this.ctx.database.get('analyse_cmd', query);
-
-    if (records.length === 0) return '暂无统计数据';
-
-    const totalCount = records.reduce((sum, record) => sum + record.count, 0);
-    let sortedList: { name: string, count: number, lastUsed: Date }[];
-
-    // 如果是查询个人数据，直接对命令列表排序
     if (userId) {
-      sortedList = records
+      const records = await this.ctx.database.get('analyse_cmd', query);
+      if (records.length === 0) return '暂无统计数据';
+
+      const totalCount = records.reduce((sum, record) => sum + record.count, 0);
+      const sortedList = records
         .map(r => ({ name: r.command, count: r.count, lastUsed: r.timestamp }))
         .sort((a, b) => b.count - a.count);
-    } else {
-      // 如果是查询群组或全局数据，需要先按命令名聚合
-      const commandMap = new Map<string, { count: number, lastUsed: Date }>();
-      for (const record of records) {
-        const existing = commandMap.get(record.command) || { count: 0, lastUsed: new Date(0) };
-        existing.count += record.count;
-        if (record.timestamp > existing.lastUsed) {
-          existing.lastUsed = record.timestamp;
-        }
-        commandMap.set(record.command, existing);
-      }
-      sortedList = Array.from(commandMap.entries())
-        .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.count - a.count);
+
+      const list: RenderListItem[] = sortedList.map(item => [item.name, item.count, item.lastUsed]);
+      return { list, total: totalCount };
     }
 
+    const aggregatedStats = await this.ctx.database.select('analyse_cmd', query)
+      .groupBy(
+        ['command'],
+        {
+          count: (row) => $.sum(row.count),
+          lastUsed: (row) => $.max(row.timestamp),
+        }
+      )
+      .execute();
+
+    if (aggregatedStats.length === 0) return '暂无统计数据';
+
+    const totalCount = aggregatedStats.reduce((sum, record) => sum + record.count, 0);
+
+    // 直接对聚合结果进行排序
+    const sortedList = aggregatedStats.sort((a, b) => b.count - a.count);
+
     // 将对象数组转换为渲染器所需的二维数组格式
-    const list: RenderListItem[] = sortedList.map(item => [item.name, item.count, item.lastUsed]);
+    const list: RenderListItem[] = sortedList.map(item => [item.command, item.count, item.lastUsed]);
 
     return { list, total: totalCount };
   }
