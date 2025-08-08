@@ -48,7 +48,8 @@ export class Collector {
     this.ctx.model.extend('analyse_msg', {
       channelId: 'string', userId: 'string', type: 'string', content: 'text', timestamp: 'timestamp',
     }, {
-      indexes: ['channelId', 'userId', 'type', 'timestamp']
+      primary: ['channelId', 'userId', 'timestamp'],
+      indexes: ['type']
     });
 
     // 初始化 `analyse_name` 表，用于存储 ID-名称映射
