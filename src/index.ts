@@ -1,5 +1,6 @@
 import { Context, Schema } from 'koishi'
-import { Collector } from './collector'
+import { Collector } from './Collector'
+import { CmdStat } from './CmdStat'
 
 export const usage = `
 <div style="border-radius: 10px; border: 1px solid #ddd; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
@@ -20,8 +21,21 @@ export interface Config {}
 
 export const Config: Schema<Config> = Schema.object({})
 
-export const using = ['database']
+export const using = ['database', 'puppeteer']
 
+/**
+ * Koishi 插件的入口函数。
+ * @param ctx {Context} Koishi 的上下文对象，用于访问框架核心功能。
+ */
 export function apply(ctx: Context) {
+  // 实例化数据收集器，用于监听和存储消息
   new Collector(ctx)
+  // 实例化命令服务，用于处理用户交互
+  const cmd = new CmdStat(ctx)
+
+  // 注册主命令 `analyse`
+  const analyse = ctx.command('analyse', '聊天记录分析')
+
+  // 注册子命令
+  cmd.registerCommands(analyse);
 }

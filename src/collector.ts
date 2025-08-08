@@ -1,23 +1,18 @@
-import { Context, Session, Element } from 'koishi';
-
-/**
- * @file collector.ts
- * @description 通过统一的事件监听器，持久化存储所有收到的消息和命令，并高效地维护用户/群组ID与名称的映射。
- */
+import { Context, Session, Element, Tables } from 'koishi';
 
 // 扩展 Koishi 的 Tables 接口
 declare module 'koishi' {
   interface Tables {
+    // 存储原始消息记录
     analyse_msg: {
-      id: number;
       channelId: string;
       userId: string;
       type: string;
       content: string;
       timestamp: Date;
     };
+    // 存储 ID 与名称的映射关系
     analyse_name: {
-      id: number;
       channelId: string;
       channelName: string;
       userId: string;
@@ -28,70 +23,107 @@ declare module 'koishi' {
 
 /**
  * @class Collector
- * @description 核心收集器类。负责初始化数据库、监听消息、分类处理并持久化数据。
+ * @description
+ * 负责初始化数据库表、监听消息，并将处理后的数据高效存入数据库。
  */
 export class Collector {
-  /**
-   * @property {Map<string, { name: string, timestamp: number }>} nameCache
-   * @description 用户名缓存，键为“频道ID:用户ID”，值为名称和时间戳。
-   */
+  // 每隔 1 分钟将缓冲区数据写入数据库
+  private static readonly FLUSH_INTERVAL = 60 * 1000;
+  // 当缓冲区数据达到 100 条时，立即写入数据库
+  private static readonly BUFFER_THRESHOLD = 100;
+
+  // 消息数据写入缓冲区
+  private msgBuffer: Tables['analyse_msg'][] = [];
+  // 定时器，用于周期性地清空缓冲区
+  private flushInterval: NodeJS.Timeout;
+  // 名称缓存，减少不必要的 API 请求 (key: 'channelId:userId')
   private nameCache = new Map<string, { name: string, timestamp: number }>();
 
   /**
    * @constructor
-   * @param {Context} ctx Koishi 的上下文对象
+   * @param ctx {Context} Koishi 的上下文对象
    */
   constructor(private ctx: Context) {
-    this.defineModels();
+    // 初始化 `analyse_msg` 表
+    this.ctx.model.extend('analyse_msg', {
+      channelId: 'string', userId: 'string', type: 'string', content: 'text', timestamp: 'timestamp',
+    }, {
+      indexes: ['channelId', 'userId', 'type', 'timestamp']
+    });
 
-    ctx.on('message', async (session: Session) => {
-      const { userId, channelId, guildId, content, timestamp, argv, elements } = session;
-      const effectiveId = channelId || guildId;
+    // 初始化 `analyse_name` 表，用于存储 ID-名称映射
+    this.ctx.model.extend('analyse_name', {
+      channelId: 'string', channelName: 'string', userId: 'string', userName: 'string',
+    }, {
+      primary: ['channelId', 'userId']
+    });
 
-      if (!effectiveId || !userId) return;
+    // 监听所有消息事件
+    ctx.on('message', (session: Session) => {
+      this.handleMessage(session);
+    });
 
-      this.updateNameIfNeeded(session, effectiveId);
+    // 设置定时任务，周期性地将缓冲区数据写入数据库
+    this.flushInterval = setInterval(() => this.flushBuffer(), Collector.FLUSH_INTERVAL);
 
-      const isCommand = !!argv?.command;
-      const type = isCommand
-        ? argv.command.name
-        : [...new Set(elements.map(e => `[${e.type}]`))].join('');
-
-      const finalContent = isCommand ? content : this.sanitizeContent(elements);
-
-      if (!finalContent?.trim()) return;
-
-      await ctx.database.create('analyse_msg', {
-        channelId: effectiveId,
-        userId,
-        type,
-        content: finalContent,
-        timestamp: new Date(timestamp),
-      });
+    // 在插件停用时，确保将所有剩余数据写入数据库
+    ctx.on('dispose', () => {
+      clearInterval(this.flushInterval);
+      this.flushBuffer();
     });
   }
 
   /**
-   * @private
-   * @method defineModels
-   * @description 初始化插件所需的两个数据表模型。
+   * 核心消息处理函数。
+   * @param session {Session} 消息会话对象
    */
-  private defineModels() {
-    this.ctx.model.extend('analyse_msg', {
-      id: 'unsigned', channelId: 'string', userId: 'string', type: 'string', content: 'text', timestamp: 'timestamp',
-    }, { autoInc: true, indexes: ['channelId', 'userId', 'type', 'timestamp'] });
+  private async handleMessage(session: Session) {
+    const { userId, channelId, guildId, content, timestamp, argv, elements } = session;
+    const effectiveId = channelId || guildId;
 
-    this.ctx.model.extend('analyse_name', {
-      id: 'unsigned', channelId: 'string', channelName: 'string', userId: 'string', userName: 'string',
-    }, { autoInc: true, unique: [['channelId', 'userId']] });
+    if (!effectiveId || !userId) return;
+
+    // 按需更新用户和群组的名称
+    this.updateNameIfNeeded(session, effectiveId);
+
+    // 判断消息是否为命令，并确定其类型
+    const isCommand = !!argv?.command;
+    const type = isCommand
+      ? argv.command.name
+      : this.summarizeElementTypes(elements);
+
+    // 标准化消息内容
+    const finalContent = isCommand ? content : this.sanitizeContent(elements);
+
+    if (!finalContent?.trim()) return;
+
+    // 将处理后的消息推入缓冲区
+    this.msgBuffer.push({
+      channelId: effectiveId,
+      userId,
+      type,
+      content: finalContent,
+      timestamp: new Date(timestamp),
+    });
+
+    // 如果缓冲区达到阈值，立即写入
+    if (this.msgBuffer.length >= Collector.BUFFER_THRESHOLD) {
+      this.flushBuffer();
+    }
   }
 
   /**
-   * @private
-   * @method sanitizeContent
-   * @description 将消息元素数组转换并清理为用于存储的字符串。
-   * @param {Element[]} elements 消息元素数组
-   * @returns {string} 清理后的消息内容
+   * 从消息元素中提取并汇总类型。
+   * @example
+   * // returns "[text][img]"
+   * summarizeElementTypes([{type: 'text'}, {type: 'img'}])
+   */
+  private summarizeElementTypes(elements: Element[]): string {
+    return [...new Set(elements.map(e => `[${e.type}]`))].join('');
+  }
+
+  /**
+   * 从消息元素中提取文本化、安全的内容。
    */
   private sanitizeContent(elements: Element[]): string {
     return elements.map(element => {
@@ -105,39 +137,60 @@ export class Collector {
   }
 
   /**
-   * @private
-   * @method updateNameIfNeeded
-   * @description 检查并按需更新用户和频道的名称。
-   * @param {Session} session 当前会话对象
-   * @param {string} effectiveId 当前生效的频道/群组ID
+   * 将内存缓冲区的消息数据批量写入数据库。
+   */
+  private async flushBuffer() {
+    if (this.msgBuffer.length === 0) return;
+
+    const bufferToFlush = this.msgBuffer;
+    this.msgBuffer = []; // 清空原缓冲区以便接收新消息
+
+    try {
+      await this.ctx.database.create('analyse_msg', bufferToFlush as any);
+    } catch (error) {
+      this.ctx.logger.error('数据库写入失败:', error);
+      // 将失败的数据重新推回缓冲区
+      this.msgBuffer.unshift(...bufferToFlush);
+    }
+  }
+
+  /**
+   * 检查并更新用户和群组的名称信息。
+   * 如果名称不在缓存或缓存已过期 (超过24小时)，则从 API 获取并更新到数据库。
    */
   private async updateNameIfNeeded(session: Session, effectiveId: string) {
     const { userId, guildId, bot } = session;
     const cacheKey = `${effectiveId}:${userId}`;
     const cached = this.nameCache.get(cacheKey);
+    const
+     CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours
 
-    if (cached && (Date.now() - cached.timestamp < 86400000)) return;
+    // 如果缓存有效，则直接返回
+    if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRATION)) return;
 
-    const [guild, member] = await Promise.all([
-      bot.getGuild(guildId),
-      bot.getGuildMember(guildId, userId),
-    ]);
+    try {
+      const [guild, member] = await Promise.all([
+        bot.getGuild(guildId),
+        bot.getGuildMember(guildId, userId),
+      ]);
 
-    const channelName = guild?.name;
-    const userName = member?.nick || member?.name;
+      const channelName = guild?.name;
+      const userName = member?.nick || member?.name;
 
-    if (!channelName || !userName) return;
+      if (!channelName || !userName) return;
 
-    const [record] = await this.ctx.database.get('analyse_name', { channelId: effectiveId, userId });
+      // 使用 upsert 直接写入或更新
+      await this.ctx.database.upsert('analyse_name', [{
+        channelId: effectiveId,
+        channelName,
+        userId,
+        userName,
+      }]);
 
-    if (record?.userName === userName && record?.channelName === channelName) {
+      // 更新内存缓存
       this.nameCache.set(cacheKey, { name: userName, timestamp: Date.now() });
-      return;
+    } catch (error) {
+        this.ctx.logger.warn('更新用户/群组名称失败:', error)
     }
-
-    await this.ctx.database.upsert('analyse_name', [{
-      channelId: effectiveId, channelName, userId, userName,
-    }]);
-    this.nameCache.set(cacheKey, { name: userName, timestamp: Date.now() });
   }
 }
