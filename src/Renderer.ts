@@ -2,13 +2,14 @@ import { Context, Time } from 'koishi';
 import {} from 'koishi-plugin-puppeteer';
 
 /**
- * 定义渲染列表中的单行数据格式。
- * @example ['ping', 150, new Date()]
+ * @typedef {Array<string | number | Date>} RenderListItem
+ * @description 定义了统计列表中单行数据的格式，它是一个由字符串、数字或日期组成的元组。
  */
 export type RenderListItem = (string | number | Date)[];
 
 /**
- * 定义渲染图片所需的数据结构。
+ * @interface ListRenderData
+ * @description 定义了调用渲染器生成列表图片时所需的完整数据结构。
  */
 export interface ListRenderData {
   title: string;
@@ -19,20 +20,24 @@ export interface ListRenderData {
 
 /**
  * @class Renderer
- * @description 通用列表渲染器，通过 Puppeteer 将数据渲染为包含精美表格的图片。
+ * @description 一个通用的列表渲染器。它使用 Koishi 的 Puppeteer 服务将结构化的 `ListRenderData` 数据
+ *              渲染为一张包含精美表格的图片。
  */
 export class Renderer {
   /**
    * @constructor
-   * @param ctx {Context} Koishi 上下文，用于访问 puppeteer 服务。
+   * @param {Context} ctx - Koishi 的插件上下文，用于访问 puppeteer 服务。
    */
   constructor(private ctx: Context) {}
 
   /**
-   * 将列表数据渲染为图片。
-   * @param data {ListRenderData} 待渲染的列表数据。
-   * @param headers {string[]} (可选) 表头文案数组，若不提供则不渲染表头。
-   * @returns {Promise<string | Buffer>} 成功时返回图片 Buffer，无数据时返回提示文本。
+   * @public
+   * @async
+   * @method renderList
+   * @description 将列表数据渲染为图片。
+   * @param {ListRenderData} data - 待渲染的完整列表数据。
+   * @param {string[]} [headers] - (可选) 表头文案数组。如果提供，将会在表格顶部渲染表头。
+   * @returns {Promise<string | Buffer>} 渲染成功时返回图片的 Buffer 数据；如果输入数据为空，则返回提示文本。
    */
   public async renderList(data: ListRenderData, headers?: string[]): Promise<string | Buffer> {
     const htmlContent = this.generateListHtml(data, headers);
@@ -41,8 +46,10 @@ export class Renderer {
   }
 
   /**
-   * 智能格式化日期，提供相对时间（如“刚刚”，“x分钟前”）和绝对日期。
-   * @param date {Date} 待格式化的日期对象。
+   * @private
+   * @method formatDate
+   * @description 智能格式化日期。对于近期的时间，提供更人性化的相对时间描述（如“刚刚”，“x 分钟前”）；对于较早的时间，则显示标准的“年-月-日”格式。
+   * @param {Date} date - 待格式化的 Date 对象。
    * @returns {string} 格式化后的日期字符串。
    */
   private formatDate(date: Date): string {
@@ -55,17 +62,21 @@ export class Renderer {
   }
 
   /**
-   * 根据数据动态生成渲染图片所需的完整 HTML 字符串。
-   * @param data {ListRenderData} 列表数据。
-   * @param headers {string[]} (可选) 表头数组。
-   * @returns {string | null} 生成的 HTML 字符串，若无数据则返回 null。
+   * @private
+   * @method generateListHtml
+   * @description 根据传入的结构化数据和表头，动态生成用于 Puppeteer 渲染的完整 HTML 字符串。
+   * @param {ListRenderData} data - 列表数据对象。
+   * @param {string[]} [headers] - (可选) 表头数组。
+   * @returns {string | null} 返回生成的 HTML 字符串。如果列表数据为空，则返回 `null`。
    */
   private generateListHtml(data: ListRenderData, headers?: string[]): string | null {
     const { title, time, total, list } = data;
     if (!list?.length) return null;
+
     const tableHeadHtml = (headers?.length > 0)
       ? `<thead><tr><th class="rank-cell">排名</th>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`
       : '';
+
     const tableRowsHtml = list.map((row, index) => {
       const rank = index + 1;
       const rankClass = rank === 1 ? 'rank-gold' : rank === 2 ? 'rank-silver' : rank === 3 ? 'rank-bronze' : '';
@@ -77,12 +88,14 @@ export class Renderer {
       }).join('');
       return `<tr>${rankCell}${dataCells}</tr>`;
     }).join('');
+
     const metaInfoHtml = `
       <div class="meta-group">
         ${total !== undefined ? `<div class="total-count">总计: ${total}</div>` : ''}
         <div class="time-label">生成于 ${time.toLocaleString('zh-CN', { hour12: false })}</div>
       </div>
     `;
+
     const styles = `
       :root {
         --bg-color: #f7f8fa; --card-bg: #ffffff; --text-color: #333; --header-color: #1f2329;
@@ -110,6 +123,7 @@ export class Renderer {
       .count-cell { text-align: right; font-weight: 600; color: var(--accent-color); }
       .date-cell { text-align: right; font-size: 13px; color: var(--sub-text-color); }
     `;
+
     return `
       <!DOCTYPE html><html lang="zh-CN">
       <head><meta charset="UTF-8"><title>${title}</title><style>${styles}</style></head>
