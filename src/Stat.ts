@@ -71,11 +71,11 @@ export class Stat {
               const result = await this.renderer.renderList(renderData, ['用户', '条数', '最后发言']);
               return Buffer.isBuffer(result) ? Element.image(result, 'image/png') : result;
             } else {
-              const stats = await this.getMessageStats(scope.guildId, scope.userId);
+              const stats = await this.getUserMessageStats(scope.guildId, scope.userId);
               if (typeof stats === 'string') return stats;
               const title = await this.generateTitle(scope.guildId, scope.userId, { main: '消息' });
               const renderData = { title, time: new Date(), total: stats.total, list: stats.list };
-              const result = await this.renderer.renderList(renderData, ['类型', '条数', '最后发言']);
+              const result = await this.renderer.renderList(renderData, ['用户', '总计发言', '最后发言']);
               return Buffer.isBuffer(result) ? Element.image(result, 'image/png') : result;
             }
           } catch (error) {
@@ -216,23 +216,32 @@ export class Stat {
   /**
    * @private
    * @async
-   * @method getMessageStats
-   * @description 从数据库中获取并聚合所有消息类型的统计数据。
+   * @method getUserMessageStats
+   * @description 从数据库中获取并聚合每个用户的消息统计数据。
    * @param {string} [guildId] - (可选) 若提供，则将范围限制在此群组。
    * @param {string} [userId] - (可选) 若提供，则将范围限制在此用户。
    * @returns {Promise<{ list: RenderListItem[], total: number } | string>} 返回一个包含列表和总数的对象，或在无数据时返回提示字符串。
    */
-  private async getMessageStats(guildId?: string, userId?: string): Promise<{ list: RenderListItem[], total: number } | string> {
-    const { uids, error } = await this.getUidsInScope(guildId, userId);
-    if (error) return error;
+  private async getUserMessageStats(guildId?: string, userId?: string): Promise<{ list: RenderListItem[], total: number } | string> {
+    const query: Partial<{ channelId: string, userId: string }> = {};
+    if (guildId) query.channelId = guildId;
+    if (userId) query.userId = userId;
+    const users = await this.ctx.database.get('analyse_user', query, ['uid', 'userName']);
+    if (users.length === 0) return '暂无统计数据';
+
+    const uids = users.map(u => u.uid);
+    const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
 
     const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: uids } })
-      .groupBy('type', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) })
+      .groupBy('uid', {
+        count: row => $.sum(row.count),
+        lastUsed: row => $.max(row.timestamp)
+      })
       .orderBy('count', 'desc').execute();
     if (stats.length === 0) return '暂无统计数据';
 
     const total = stats.reduce((sum, record) => sum + record.count, 0);
-    const list = stats.map(item => [item.type, item.count, item.lastUsed]);
+    const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
     return { list, total };
   }
 
