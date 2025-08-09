@@ -60,7 +60,7 @@ export class Collector {
   constructor(private ctx: Context, private config: Config) {
     this.defineModels();
     ctx.on('message', (session) => this.handleMessage(session));
-    if (this.config.enableAdvanced) {
+    if (this.config.enableOriRecord) {
       this.flushInterval = setInterval(() => this.flushCacheBuffer(), Collector.FLUSH_INTERVAL);
       ctx.on('dispose', () => {
         clearInterval(this.flushInterval);
@@ -84,7 +84,7 @@ export class Collector {
     this.ctx.model.extend('analyse_msg', {
       uid: 'unsigned', type: 'string', hour: 'timestamp', count: 'unsigned', timestamp: 'timestamp',
     }, { primary: ['uid', 'type', 'hour'] });
-    if (this.config.enableAdvanced) {
+    if (this.config.enableOriRecord) {
       this.ctx.model.extend('analyse_cache', {
         id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp',
       }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
@@ -128,7 +128,7 @@ export class Collector {
         }]);
       }
 
-      if (this.config.enableAdvanced) {
+      if (this.config.enableOriRecord) {
         this.cacheBuffer.push({
           uid,
           content: this.sanitizeContent(elements),

@@ -1,15 +1,6 @@
-import { Context, Session, Command, $, h, Element } from 'koishi';
+import { Context, Command, $, h, Element } from 'koishi';
 import { Renderer, ListRenderData, RenderListItem } from './Renderer';
 import { Config } from './index';
-
-/**
- * 定义了标题生成器的选项。
- */
-interface TitleOptions {
-  main: '命令' | '消息' | '排行';
-  subtype?: string; // 用于消息类型排行
-  timeRange?: number; // 用于水群排行的小时数
-}
 
 /**
  * @class Stat
@@ -29,12 +20,12 @@ export class Stat {
 
   /**
    * @method registerCommands
-   * @description 根据插件配置，动态地将 `.command`, `.message`, `.rank` 子命令注册到主 `analyse` 命令下。
+   * @description 根据插件配置，动态地将 `.cmd`, `.msg`, `.rank` 子命令注册到主 `analyse` 命令下。
    * @param {Command} analyse - 主 `analyse` 命令实例。
    */
   public registerCommands(analyse: Command) {
     if (this.config.enableCmdStat) {
-      analyse.subcommand('.command', '命令使用统计')
+      analyse.subcommand('.cmd', '命令使用统计')
         .option('user', '-u [user:user] 指定用户')
         .option('guild', '-g [guildId:string] 指定群组')
         .usage('查询用户或群组的命令使用统计，默认展示全局统计。')
@@ -69,7 +60,7 @@ export class Stat {
     }
 
     if (this.config.enableMsgStat) {
-      analyse.subcommand('.message', '消息发送统计')
+      analyse.subcommand('.msg', '消息发送统计')
         .option('user', '-u [user:user] 指定用户')
         .option('guild', '-g [guildId:string] 指定群组')
         .option('type', '-t <type:string> 指定类型')
@@ -114,7 +105,9 @@ export class Stat {
             return '渲染消息统计图片失败';
           }
         });
+    }
 
+    if (this.config.enableRankStat) {
       analyse.subcommand('.rank', '用户发言排行')
         .option('guild', '-g [guildId:string] 指定群组')
         .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
@@ -156,10 +149,13 @@ export class Stat {
    * @description 通用的标题生成器。根据查询参数和类型选项动态生成易于理解的图片标题。
    * @param {string} [guildId] - (可选) 查询的群组 ID。
    * @param {string} [userId] - (可选) 查询的用户 ID。
-   * @param {TitleOptions} options - 标题的配置选项。
+   * @param {object} options - 标题的配置选项。
+   * @param {'命令' | '消息' | '排行'} options.main - 标题主类型。
+   * @param {string} [options.subtype] - (可选) 消息类型的子类型。
+   * @param {number} [options.timeRange] - (可选) 排行的时间范围（小时）。
    * @returns {Promise<string>} 生成的标题字符串。
    */
-  private async generateTitle(guildId: string | undefined, userId: string | undefined, options: TitleOptions): Promise<string> {
+  private async generateTitle(guildId: string | undefined, userId: string | undefined, options: { main: '命令' | '消息' | '排行'; subtype?: string; timeRange?: number; }): Promise<string> {
     let scopeText: string;
     if (userId && guildId) {
       const user = await this.ctx.database.get('analyse_user', { channelId: guildId, userId }, ['userName']);

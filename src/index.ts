@@ -30,7 +30,8 @@ export interface Config {
   enableListener: boolean;
   enableCmdStat: boolean;
   enableMsgStat: boolean;
-  enableAdvanced: boolean;
+  enableRankStat: boolean;
+  enableOriRecord: boolean;
 }
 
 /**
@@ -39,13 +40,14 @@ export interface Config {
  */
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
-    enableListener: Schema.boolean().default(true).description('开启监听'),
-  }).description('基本设置'),
+    enableListener: Schema.boolean().default(true).description('启用消息监听'),
+    enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
+  }).description('监听配置'),
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
-    enableAdvanced: Schema.boolean().default(true).description('启用原始记录'),
-  }).description('功能开关'),
+    enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
+  }).description('命令配置'),
 ]);
 
 /**
