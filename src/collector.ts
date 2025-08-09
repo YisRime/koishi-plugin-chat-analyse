@@ -270,7 +270,7 @@ export class Collector {
       }
 
       // 写入原始消息记录
-      if (advancedBufferToFlush.length > 0) await this.ctx.database.create('analyse_cache', advancedBufferToFlush as any);
+      if (advancedBufferToFlush.length > 0) await this.ctx.database.upsert('analyse_cache', advancedBufferToFlush);
     } catch (error) {
       this.ctx.logger.error('写入数据出错:', error);
     }
