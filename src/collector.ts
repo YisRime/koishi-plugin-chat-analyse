@@ -20,13 +20,13 @@ declare module 'koishi' {
     analyse_msg: {
       uid: number;
       type: string;
+      hour: Date;
       count: number;
       timestamp: Date;
     };
     analyse_cache: {
       id: number;
-      channelId: string;
-      userId: string;
+      uid: number;
       content: string;
       timestamp: Date;
     };
@@ -82,13 +82,12 @@ export class Collector {
       uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp',
     }, { primary: ['uid', 'command'] });
     this.ctx.model.extend('analyse_msg', {
-      uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp',
-    }, { primary: ['uid', 'type'] });
+      uid: 'unsigned', type: 'string', hour: 'timestamp', count: 'unsigned', timestamp: 'timestamp',
+    }, { primary: ['uid', 'type', 'hour'] });
     if (this.config.enableAdvanced) {
       this.ctx.model.extend('analyse_cache', {
-        id: 'unsigned', channelId: 'string', userId: 'string',
-        content: 'text', timestamp: 'timestamp',
-      }, { primary: 'id', autoInc: true });
+        id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp',
+      }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
     }
   }
 
@@ -107,29 +106,31 @@ export class Collector {
 
       const uid = await this.getOrCreateUser(session, effectiveId);
       if (!uid) return;
-      const now = new Date();
 
       if (argv?.command) {
         await this.ctx.database.upsert('analyse_cmd', (row) => [{
           uid,
           command: argv.command.name,
           count: $.add($.ifNull(row.count, $.literal(0)), 1),
-          timestamp: now,
+          timestamp: new Date(),
         }]);
       }
+
+      const messageTime = new Date(timestamp);
+      const hourStart = new Date(messageTime.getFullYear(), messageTime.getMonth(), messageTime.getDate(), messageTime.getHours());
 
       const uniqueElementTypes = new Set(elements.map(e => e.type));
       for (const type of uniqueElementTypes) {
         await this.ctx.database.upsert('analyse_msg', (row) => [{
-          uid, type,
-          count: $.add($.ifNull(row.count, $.literal(0)), 1),
-          timestamp: now,
+          uid, type, hour: hourStart,
+          count: $.add($.ifNull(row.count, 0), 1),
+          timestamp: messageTime,
         }]);
       }
 
       if (this.config.enableAdvanced) {
         this.cacheBuffer.push({
-          channelId: effectiveId, userId,
+          uid,
           content: this.sanitizeContent(elements),
           timestamp: new Date(timestamp),
         });
