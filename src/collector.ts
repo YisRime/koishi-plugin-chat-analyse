@@ -3,7 +3,7 @@ import { Context, Session, Element, Tables } from 'koishi';
 // 扩展 Koishi 的 Tables 接口，定义插件所需的数据表结构
 declare module 'koishi' {
   interface Tables {
-    analyse_msg: {
+    analyse_ori_msg: {
       id: number;
       channelId: string;
       userId: string;
@@ -29,7 +29,7 @@ export class Collector {
   private static readonly FLUSH_INTERVAL = 60 * 1000; // 每分钟刷新一次
   private static readonly BUFFER_THRESHOLD = 100;    // 缓冲区达到100条消息时刷新
   // 消息和名称缓存
-  private msgBuffer: Omit<Tables['analyse_msg'], 'id'>[] = [];
+  private msgBuffer: Omit<Tables['analyse_ori_msg'], 'id'>[] = [];
   private nameCache = new Map<string, { name: string, timestamp: number }>();
   private pendingNameRequests = new Map<string, Promise<void>>();
   private flushInterval: NodeJS.Timeout;
@@ -39,8 +39,8 @@ export class Collector {
    * @param ctx {Context} Koishi 上下文，用于访问框架核心功能。
    */
   constructor(private ctx: Context) {
-    // 初始化 `analyse_msg` 数据表
-    ctx.model.extend('analyse_msg', {
+    // 初始化 `analyse_ori_msg` 数据表
+    ctx.model.extend('analyse_ori_msg', {
       id: 'unsigned', channelId: 'string', userId: 'string',
       type: 'string', content: 'text', timestamp: 'timestamp',
     }, { primary: 'id', autoInc: true, indexes: ['timestamp', 'channelId', 'userId', 'type'] });
@@ -116,7 +116,7 @@ export class Collector {
     const bufferToFlush = this.msgBuffer;
     this.msgBuffer = [];
     try {
-      await this.ctx.database.upsert('analyse_msg', bufferToFlush as any);
+      await this.ctx.database.upsert('analyse_ori_msg', bufferToFlush as any);
     } catch (error) {
       this.ctx.logger.error('数据写入失败:', error);
       this.msgBuffer.unshift(...bufferToFlush);
