@@ -1,16 +1,8 @@
 import { Context, Time } from 'koishi';
 import {} from 'koishi-plugin-puppeteer';
 
-/**
- * @typedef {Array<string | number | Date>} RenderListItem
- * @description 定义了统计列表中单行数据的格式，它是一个由字符串、数字或日期组成的元组。
- */
 export type RenderListItem = (string | number | Date)[];
 
-/**
- * @interface ListRenderData
- * @description 定义了调用渲染器生成列表图片时所需的完整数据结构。
- */
 export interface ListRenderData {
   title: string;
   time: Date;
@@ -20,14 +12,9 @@ export interface ListRenderData {
 
 /**
  * @class Renderer
- * @description 一个通用的列表渲染器。它使用 Koishi 的 Puppeteer 服务将结构化的 `ListRenderData` 数据
- *              渲染为一张包含精美表格的图片。
+ * @description 通用列表渲染器，使用 Puppeteer 将结构化数据渲染为精美的、类似卡片的表格图片。
  */
 export class Renderer {
-  /**
-   * @constructor
-   * @param {Context} ctx - Koishi 的插件上下文，用于访问 puppeteer 服务。
-   */
   constructor(private ctx: Context) {}
 
   /**
@@ -48,17 +35,44 @@ export class Renderer {
   /**
    * @private
    * @method formatDate
-   * @description 智能格式化日期。对于近期的时间，提供更人性化的相对时间描述（如“刚刚”，“x 分钟前”）；对于较早的时间，则显示标准的“年-月-日”格式。
+   * @description 将日期格式化为包含两个单位的相对时间字符串（如“21天14时前”），如果超过一年则显示绝对日期。
    * @param {Date} date - 待格式化的 Date 对象。
    * @returns {string} 格式化后的日期字符串。
    */
   private formatDate(date: Date): string {
     if (!date) return '未知';
+
     const diff = Date.now() - date.getTime();
     if (diff < Time.minute) return '刚刚';
-    if (diff < Time.hour) return `${Math.floor(diff / Time.minute)} 分钟前`;
-    if (diff < Time.day) return `${Math.floor(diff / Time.hour)} 小时前`;
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+    // 当时间超过一年，显示具体日期更为清晰
+    if (diff > 365 * Time.day) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    const timeUnits: { unit: string; ms: number }[] = [
+        { unit: '月', ms: 30 * Time.day },
+        { unit: '天', ms: Time.day },
+        { unit: '时', ms: Time.hour },
+        { unit: '分', ms: Time.minute },
+    ];
+
+    let remainingDiff = diff;
+    const parts: string[] = [];
+
+    // 从大到小提取时间单位
+    for (const { unit, ms } of timeUnits) {
+        if (remainingDiff >= ms) {
+            const value = Math.floor(remainingDiff / ms);
+            parts.push(`${value}${unit}`);
+            remainingDiff %= ms;
+        }
+    }
+
+    // 截取前两个最大的单位进行组合
+    const result = parts.slice(0, 2).join('');
+
+    return result ? `${result}前` : '刚刚';
   }
 
   /**
@@ -74,67 +88,49 @@ export class Renderer {
     if (!list?.length) return null;
 
     const tableHeadHtml = (headers?.length > 0)
-      ? `<thead><tr><th class="rank-cell">排名</th>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`
+      ? `<thead><tr><th class="rank-cell">排名</th>${headers.map((h, i) => {
+          const firstCell = list[0]?.[i];
+          let headerClass = '';
+          if (i === 0) headerClass = 'column-main-label';
+          if (typeof firstCell === 'number' || firstCell instanceof Date) {
+            headerClass += ' header-right-align';
+          }
+          return `<th class="${headerClass.trim()}">${h}</th>`;
+        }).join('')}</tr></thead>`
       : '';
 
     const tableRowsHtml = list.map((row, index) => {
       const rank = index + 1;
       const rankClass = rank === 1 ? 'rank-gold' : rank === 2 ? 'rank-silver' : rank === 3 ? 'rank-bronze' : '';
-      const rankCell = `<td class="rank-cell"><span class="rank-badge ${rankClass}">${rank}</span></td>`;
-      const dataCells = row.map(cell => {
-        if (cell instanceof Date) return `<td class="data-cell date-cell">${this.formatDate(cell)}</td>`;
-        if (typeof cell === 'number') return `<td class="data-cell count-cell">${cell}</td>`;
-        return `<td class="data-cell name-cell">${String(cell)}</td>`;
+      const rankCell = `<td class="rank-cell ${rankClass}">${rank}</td>`;
+      const dataCells = row.map((cell, cellIndex) => {
+        let className = 'data-cell';
+        let content: string;
+        if (cell instanceof Date) {
+          className += ' date-cell';
+          content = this.formatDate(cell);
+        } else if (typeof cell === 'number') {
+          className += ' count-cell';
+          content = cell.toLocaleString();
+        } else {
+          className += ' name-cell';
+          content = String(cell);
+        }
+        if (cellIndex === 0) className += ' column-main-label';
+        return `<td class="${className}">${content}</td>`;
       }).join('');
       return `<tr>${rankCell}${dataCells}</tr>`;
     }).join('');
 
     const metaInfoHtml = `
       <div class="meta-group">
-        ${total !== undefined ? `<div class="total-count">总计: ${total}</div>` : ''}
+        ${total !== undefined ? `<div class="total-count">总计: ${typeof total === 'number' ? total.toLocaleString() : total}</div>` : ''}
         <div class="time-label">生成于 ${time.toLocaleString('zh-CN', { hour12: false })}</div>
       </div>
     `;
 
-    const styles = `
-      :root {
-        --bg-color: #f7f8fa; --card-bg: #ffffff; --text-color: #333; --header-color: #1f2329;
-        --sub-text-color: #646a73; --border-color: #e4e6eb; --accent-color: #4a6ee0;
-        --gold: #ffc327; --silver: #a8b5c1; --bronze: #d69864;
-      }
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: var(--bg-color); margin: 0; padding: 20px; width: 700px; box-sizing: border-box; -webkit-font-smoothing: antialiased; }
-      .container { background: var(--card-bg); border-radius: 12px; box-shadow: 0 6px 16px rgba(0,0,0,0.08); padding: 24px; }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 16px; }
-      .title-group h1 { font-size: 24px; font-weight: 700; color: var(--header-color); margin: 0; }
-      .meta-group { text-align: right; }
-      .meta-group .total-count { font-size: 22px; font-weight: 700; color: var(--accent-color); }
-      .meta-group .time-label { font-size: 13px; color: var(--sub-text-color); margin-top: 4px; }
-      table { width: 100%; border-collapse: collapse; color: var(--text-color); }
-      th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-      th { font-size: 13px; font-weight: 600; color: var(--sub-text-color); }
-      td { font-size: 15px; }
-      tr:last-child td { border-bottom: none; }
-      .rank-cell { width: 50px; text-align: center; }
-      .rank-badge { display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 50%; font-weight: 600; font-size: 14px; color: var(--header-color); background-color: #eef0f3; }
-      .rank-gold, .rank-silver, .rank-bronze { color: #fff; }
-      .rank-gold { background-color: var(--gold); } .rank-silver { background-color: var(--silver); } .rank-bronze { background-color: var(--bronze); }
-      .data-cell { word-break: break-all; }
-      .name-cell { font-weight: 600; color: var(--header-color); }
-      .count-cell { text-align: right; font-weight: 600; color: var(--accent-color); }
-      .date-cell { text-align: right; font-size: 13px; color: var(--sub-text-color); }
-    `;
+    const styles = `:root{--bg-color:#f7f8fa;--card-bg:#fff;--text-color:#333;--header-color:#1f2329;--sub-text-color:#646a73;--border-color:#f0f0f0;--accent-color:#4a6ee0;--gold:#ffac33;--silver:#a8b5c1;--bronze:#d69864}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:var(--bg-color);margin:0;padding:20px;width:800px;box-sizing:border-box;-webkit-font-smoothing:antialiased}.container{background:var(--card-bg);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.08);padding:20px}.header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;margin-bottom:8px}.title-group h1{font-size:22px;font-weight:600;color:var(--header-color);margin:0}.meta-group{text-align:right;white-space:nowrap}.meta-group .total-count{font-size:18px;font-weight:600;color:var(--accent-color)}.meta-group .time-label{font-size:13px;color:var(--sub-text-color);margin-top:4px}table{width:100%;border-collapse:collapse;color:var(--text-color)}th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border-color);vertical-align:middle}thead tr:first-child th{border-top:1px solid var(--border-color)}th{font-size:13px;font-weight:500;color:var(--sub-text-color)}td{font-size:15px}tr:last-child td{border-bottom:none}.header-right-align{text-align:right}.rank-cell{width:45px;text-align:center;font-weight:600;color:var(--sub-text-color);padding-left:0;padding-right:0}.rank-gold{color:var(--gold) !important}.rank-silver{color:var(--silver) !important}.rank-bronze{color:var(--bronze) !important}.column-main-label{width:45%}.data-cell{word-break:break-all}.name-cell{font-weight:500;color:var(--header-color)}.count-cell,.date-cell{text-align:right}.count-cell{font-weight:600;color:var(--accent-color)}.date-cell{font-size:14px;color:var(--sub-text-color)}`;
 
-    return `
-      <!DOCTYPE html><html lang="zh-CN">
-      <head><meta charset="UTF-8"><title>${title}</title><style>${styles}</style></head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <div class="title-group"><h1>${title}</h1></div>
-            ${metaInfoHtml}
-          </div>
-          <table>${tableHeadHtml}<tbody>${tableRowsHtml}</tbody></table>
-        </div>
-      </body></html>`;
+    return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>${title}</title><style>${styles}</style></head><body><div class="container"><div class="header"><div class="title-group"><h1>${title}</h1></div>${metaInfoHtml}</div><table>${tableHeadHtml}<tbody>${tableRowsHtml}</tbody></table></div></body></html>`;
   }
 }
