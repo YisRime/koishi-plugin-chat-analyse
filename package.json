@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-chat-analyse",
   "description": "聊天记录分析",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],
