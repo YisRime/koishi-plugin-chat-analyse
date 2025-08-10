@@ -2,9 +2,10 @@ import { Context, Command, $, h, Element, Session, Time } from 'koishi';
 import { Renderer, RenderListItem } from './Renderer';
 import { Config } from './index';
 
-// 定义内部类型，用于统一处理命令选项
+/** @interface QueryScopeOptions - 定义了查询命令的通用范围选项。 */
 type QueryScopeOptions = { user?: string; guild?: string; all?: boolean };
-type QueryScopeResult = { userId?: string; guildId?: string; error?: string };
+/** @interface QueryScopeResult - 定义了解析范围选项后的结果。 */
+type QueryScopeResult = { uids?: number[]; error?: string; scopeDesc: { guildId?: string; userId?: string } };
 
 /**
  * @class Stat
@@ -14,9 +15,8 @@ export class Stat {
   public renderer: Renderer;
 
   /**
-   * @constructor
-   * @param {Context} ctx - Koishi 的插件上下文。
-   * @param {Config} config - 插件的配置对象。
+   * @param ctx - Koishi 的插件上下文。
+   * @param config - 插件的配置对象。
    */
   constructor(private ctx: Context, private config: Config) {
     this.renderer = new Renderer(ctx);
@@ -24,336 +24,167 @@ export class Stat {
   }
 
   /**
-   * @private
-   * @method setupCleanupTask
-   * @description 设置一个定时清理任务。
-   * 此任务会根据配置中的 `rankRetentionDays` 定期删除过期的发言排行数据，以防止数据库膨胀。
+   * @private @method setupCleanupTask
+   * @description 设置定时任务，根据配置定期清理过期的发言排行数据。
    */
   private setupCleanupTask() {
     if (this.config.rankRetentionDays > 0) {
       this.ctx.cron('0 0 * * *', async () => {
-        try {
-          const cutoffDate = new Date(Date.now() - this.config.rankRetentionDays * Time.day);
-          await this.ctx.database.remove('analyse_rank', { timestamp: { $lt: cutoffDate } });
-        } catch (error) {
-          this.ctx.logger.error('清理发言排行历史记录出错:', error);
-        }
+        const cutoffDate = new Date(Date.now() - this.config.rankRetentionDays * Time.day);
+        await this.ctx.database.remove('analyse_rank', { timestamp: { $lt: cutoffDate } })
+          .catch(e => this.ctx.logger.error('清理发言排行历史记录失败:', e));
       });
     }
   }
 
   /**
-   * @public
-   * @method registerCommands
-   * @description 根据插件配置，动态地将 `.cmd`, `.msg`, `.rank` 子命令注册到主 `analyse` 命令下。
-   * @param {Command} analyse - 主 `analyse` 命令实例。
+   * @public @method registerCommands
+   * @description 根据配置，动态地将 `.cmd`, `.msg`, `.rank` 子命令注册到主 `analyse` 命令下。
+   * @param analyse - 主 `analyse` 命令实例。
    */
   public registerCommands(analyse: Command) {
-    if (this.config.enableCmdStat) {
-      analyse.subcommand('.cmd', '命令使用统计')
-        .option('user', '-u <user:string> 指定用户')
-        .option('guild', '-g <guildId:string> 指定群组')
-        .option('all', '-a 展示全局统计')
-        .action(async ({ session, options }) => {
-          const scope = this.parseQueryScope(session, options);
-          if (scope.error) return scope.error;
+    const createHandler = (handler: (scope: QueryScopeResult, options: any) => Promise<string | Buffer>) => {
+      return async ({ session, options }) => {
+        const scope = await this.parseQueryScope(session, options);
+        if (scope.error) return scope.error;
+        try {
+          const result = await handler(scope, options);
+          return Buffer.isBuffer(result) ? h.image(result, 'image/png') : result;
+        } catch (error) {
+          this.ctx.logger.error('渲染统计图片失败:', error);
+          return '渲染统计图片失败';
+        }
+      };
+    };
 
-          try {
-            const stats = await this.getCommandStats(scope.guildId, scope.userId);
-            if (typeof stats === 'string') return stats;
-
-            const title = await this.generateTitle(scope.guildId, scope.userId, { main: '命令' });
-            const renderData = { title, time: new Date(), total: stats.total, list: stats.list };
-            const result = await this.renderer.renderList(renderData, ['命令', '次数', '最后使用']);
-            return Buffer.isBuffer(result) ? Element.image(result, 'image/png') : result;
-          } catch (error) {
-            this.ctx.logger.error('渲染命令统计图片失败:', error);
-            return '渲染命令统计图片失败';
-          }
-        });
-    }
-
-    if (this.config.enableMsgStat) {
-      analyse.subcommand('.msg', '消息发送统计')
-        .option('user', '-u <user:string> 指定用户')
-        .option('guild', '-g <guildId:string> 指定群组')
-        .option('type', '-t <type:string> 指定类型')
-        .option('all', '-a 展示全局统计')
-        .action(async ({ session, options }) => {
-          const scope = this.parseQueryScope(session, options);
-          if (scope.error) return scope.error;
-          try {
-            if (options.type) {
-              const stats = await this.getMessageStatsByType(options.type, scope.guildId, scope.userId);
-              if (typeof stats === 'string') return stats;
-              const title = await this.generateTitle(scope.guildId, scope.userId, { main: '消息', subtype: options.type });
-              const renderData = { title, time: new Date(), total: stats.total, list: stats.list };
-              const result = await this.renderer.renderList(renderData, ['用户', '条数', '最后发言']);
-              return Buffer.isBuffer(result) ? Element.image(result, 'image/png') : result;
-            } else {
-              const stats = await this.getUserMessageStats(scope.guildId, scope.userId);
-              if (typeof stats === 'string') return stats;
-              const title = await this.generateTitle(scope.guildId, scope.userId, { main: '消息' });
-              const renderData = { title, time: new Date(), total: stats.total, list: stats.list };
-              const result = await this.renderer.renderList(renderData, ['用户', '总计发言', '最后发言']);
-              return Buffer.isBuffer(result) ? Element.image(result, 'image/png') : result;
-            }
-          } catch (error) {
-            this.ctx.logger.error('渲染消息统计图片失败:', error);
-            return '渲染消息统计图片失败';
-          }
-        });
-    }
-
-    if (this.config.enableRankStat) {
-      analyse.subcommand('.rank', '用户发言排行')
-        .option('guild', '-g <guildId:string> 指定群组')
-        .option('type', '-t <type:string> 指定类型')
-        .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
-        .option('all', '-a 展示全局统计')
-        .action(async ({ session, options }) => {
-          const guildId = options.all ? undefined : (options.guild || session.guildId);
-          if (!guildId && !options.all) return '请提供查询范围';
-
-          try {
-            const stats = await this.getActiveUserStats(options.hours, guildId, options.type);
-            if (typeof stats === 'string') return stats;
-
-            const listWithPercentage = stats.list.map(row => [
-              ...row,
-              stats.total > 0 ? `${((row[1] as number) / stats.total * 100).toFixed(2)}%` : '0.00%',
-            ]);
-            const title = await this.generateTitle(guildId, undefined, { main: '排行', timeRange: options.hours, subtype: options.type });
-            const renderData = { title, time: new Date(), total: stats.total, list: listWithPercentage };
-            const result = await this.renderer.renderList(renderData, ['用户', '总计发言', '占比']);
-            return Buffer.isBuffer(result) ? Element.image(result, 'image/png') : result;
-          } catch (error) {
-            this.ctx.logger.error('渲染发言排行图片失败:', error);
-            return '渲染发言排行图片失败';
-          }
-        });
-    }
-  }
-
-  /**
-   * @private
-   * @method parseQueryScope
-   * @description 解析命令的选项，将其转换为统一的查询范围对象（userId 和 guildId）。
-   * @param {Session} session - 当前会话对象。
-   * @param {QueryScopeOptions} options - 命令传入的选项。
-   * @returns {QueryScopeResult} 包含 userId、guildId 或 error 信息的查询范围对象。
-   */
-  private parseQueryScope(session: Session, options: QueryScopeOptions): QueryScopeResult {
-    let userId: string, guildId: string;
-
-    if (options.user) {
-      const atElements = h.select(options.user, 'at');
-      if (atElements.length > 0) {
-        userId = atElements[0].attrs.id;
-      } else {
-        userId = options.user.trim();
+    if (this.config.enableCmdStat) analyse.subcommand('.cmd', '命令使用统计').option('user', '-u <user:string> 指定用户').option('guild', '-g <guildId:string> 指定群组').option('all', '-a 全局').action(createHandler((scope) => this.handleCmdStats(scope)));
+    if (this.config.enableMsgStat) analyse.subcommand('.msg', '消息发送统计').option('user', '-u <user:string> 指定用户').option('guild', '-g <guildId:string> 指定群组').option('type', '-t <type:string> 指定类型').option('all', '-a 全局').action(createHandler((scope, options) => this.handleMsgStats(scope, options.type)));
+    if (this.config.enableRankStat) analyse.subcommand('.rank', '用户发言排行').option('guild', '-g <guildId:string> 指定群组').option('type', '-t <type:string> 指定类型').option('hours', '-h <hours:number> 指定时长', { fallback: 24 }).option('all', '-a 全局').action(async ({ session, options }) => {
+      const guildId = options.all ? undefined : (options.guild || session.guildId);
+      if (!guildId && !options.all) return '请指定群组或查询全局';
+      try {
+        const result = await this.handleRankStats(options.hours, guildId, options.type);
+        return Buffer.isBuffer(result) ? h.image(result, 'image/png') : result;
+      } catch (error) {
+        this.ctx.logger.error('渲染发言排行图片失败:', error);
+        return '渲染发言排行图片失败';
       }
-    }
-
-    if (options.guild) guildId = options.guild;
-    if (options.all) return { userId, guildId: undefined };
-
-    if (!userId && !guildId) {
-      if (session.guildId) return { guildId: session.guildId };
-      return { error: '请提供查询范围' };
-    }
-
-    return { userId, guildId };
+    });
   }
 
-  /**
-   * @private
-   * @async
-   * @method getUidsInScope
-   * @description 根据查询范围（guildId, userId）获取匹配用户的 UID 列表。
-   * @param {string} [guildId] - (可选) 群组 ID。
-   * @param {string} [userId] - (可选) 用户 ID。
-   * @returns {Promise<{ uids?: number[], error?: string }>} 包含 UID 数组或错误信息的对象。
-   */
-  private async getUidsInScope(guildId?: string, userId?: string): Promise<{ uids?: number[], error?: string }> {
-    const query: Partial<{ channelId: string, userId: string }> = {};
-    if (guildId) query.channelId = guildId;
-    if (userId) query.userId = userId;
-
-    const users = await this.ctx.database.get('analyse_user', query, ['uid']);
-    if (users.length === 0) return { error: '暂无统计数据' };
-    return { uids: users.map(u => u.uid) };
-  }
-
-  /**
-   * @private
-   * @async
-   * @method generateTitle
-   * @description 通用的标题生成器。根据查询参数和类型选项动态生成易于理解的图片标题。
-   * @param {string} [guildId] - (可选) 查询的群组 ID。
-   * @param {string} [userId] - (可选) 查询的用户 ID。
-   * @param {object} options - 标题的配置选项。
-   * @param {'命令' | '消息' | '排行'} options.main - 标题主类型。
-   * @param {string} [options.subtype] - (可选) 消息类型的子类型。
-   * @param {number} [options.timeRange] - (可选) 排行的时间范围（小时）。
-   * @returns {Promise<string>} 生成的标题字符串。
-   */
-  private async generateTitle(guildId: string, userId: string, options: { main: '命令' | '消息' | '排行'; subtype?: string; timeRange?: number; }): Promise<string> {
-    let scopeText = '全局';
-    if (userId && guildId) {
-      const user = await this.ctx.database.get('analyse_user', { channelId: guildId, userId }, ['userName']);
-      const guild = await this.ctx.database.get('analyse_user', { channelId: guildId }, ['channelName']);
-      scopeText = `${user[0]?.userName || userId} 在 ${guild[0]?.channelName || guildId}`;
-    } else if (userId) {
-      const user = await this.ctx.database.get('analyse_user', { userId }, ['userName']);
-      scopeText = `${user[0]?.userName || userId}的全局`;
-    } else if (guildId) {
-      const guild = await this.ctx.database.get('analyse_user', { channelId: guildId }, ['channelName']);
-      scopeText = guild[0]?.channelName || guildId;
-    }
-
-    if (options.main === '排行') {
-      const typeText = options.subtype ? `“${options.subtype}”` : '';
-      return `${scopeText}${options.timeRange}小时${typeText}消息排行`;
-    }
-    if (options.main === '消息' && options.subtype) return `${scopeText}“${options.subtype}”消息统计`;
-    return `${scopeText}${options.main}统计`;
-  }
-
-  /**
-   * @private
-   * @async
-   * @method getCommandStats
-   * @description 从数据库中获取并聚合命令使用统计数据。
-   * @param {string} [guildId] - (可选) 若提供，则将范围限制在此群组。
-   * @param {string} [userId] - (可选) 若提供，则将范围限制在此用户。
-   * @returns {Promise<{ list: RenderListItem[], total: number } | string>} 返回一个包含列表和总数的对象，或在无数据时返回提示字符串。
-   */
-  private async getCommandStats(guildId?: string, userId?: string): Promise<{ list: RenderListItem[], total: number } | string> {
-    const { uids, error } = await this.getUidsInScope(guildId, userId);
-    if (error) return error;
-
-    const stats = await this.ctx.database.select('analyse_cmd').where({ uid: { $in: uids } })
-      .groupBy('command', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) })
-      .orderBy('count', 'desc').execute();
-    if (stats.length === 0) return '暂无统计数据';
-
+  private async handleCmdStats(scope: QueryScopeResult) {
+    const stats = await this.ctx.database.select('analyse_cmd').where({ uid: { $in: scope.uids } }).groupBy('command', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+    if (stats.length === 0) return '暂无匹配指令统计数据';
     const total = stats.reduce((sum, record) => sum + record.count, 0);
     const list = stats.map(item => [item.command, item.count, item.lastUsed]);
-    return { list, total };
+    const title = await this.generateTitle(scope.scopeDesc, { main: '命令使用' });
+    return this.renderer.renderList({ title, time: new Date(), total, list }, ['命令', '次数', '最后使用']);
+  }
+
+  private async handleMsgStats(scope: QueryScopeResult, type?: string) {
+    if (type) {
+      const { list, total } = await this.getMessageStatsByType(type, scope.uids);
+      if (!list) return `暂无“${type}”类型消息数据`;
+      const title = await this.generateTitle(scope.scopeDesc, { main: '消息', subtype: type });
+      return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '条数', '最后发言']);
+    } else {
+      const { list, total } = await this.getUserMessageStats(scope.uids);
+      if (!list) return '暂无消息数据';
+      const title = await this.generateTitle(scope.scopeDesc, { main: '消息发送' });
+      return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '总计发言', '最后发言']);
+    }
+  }
+
+  private async handleRankStats(hours: number, guildId?: string, type?: string) {
+    const { list, total } = await this.getActiveUserStats(hours, guildId, type);
+    if (!list) return '暂无指定时段内发言记录';
+    const listWithPercentage = list.map(row => [...row, total > 0 ? `${((row[1] as number) / total * 100).toFixed(2)}%` : '0.00%']);
+    const title = await this.generateTitle({ guildId }, { main: '发言排行', timeRange: hours, subtype: type });
+    return this.renderer.renderList({ title, time: new Date(), total, list: listWithPercentage }, ['用户', '总计发言', '占比']);
   }
 
   /**
-   * @private
-   * @async
-   * @method getUserMessageStats
-   * @description 从数据库中获取并聚合每个用户的消息统计数据。
-   * @param {string} [guildId] - (可选) 若提供，则将范围限制在此群组。
-   * @param {string} [userId] - (可选) 若提供，则将范围限制在此用户。
-   * @returns {Promise<{ list: RenderListItem[], total: number } | string>} 返回一个包含列表和总数的对象，或在无数据时返回提示字符串。
+   * @private @method parseQueryScope
+   * @description 解析命令选项，转换为包含 UIDs 和描述性信息的统一查询范围对象。
+   * @param session - 当前会话对象。
+   * @param options - 命令选项。
+   * @returns 包含 uids、错误或范围描述的查询范围对象。
    */
-  private async getUserMessageStats(guildId?: string, userId?: string): Promise<{ list: RenderListItem[], total: number } | string> {
-    const query: Partial<{ channelId: string, userId: string }> = {};
-    if (guildId) query.channelId = guildId;
-    if (userId) query.userId = userId;
-    const users = await this.ctx.database.get('analyse_user', query, ['uid', 'userName']);
-    if (users.length === 0) return '暂无统计数据';
+  private async parseQueryScope(session: Session, options: QueryScopeOptions): Promise<QueryScopeResult> {
+    const scopeDesc = { guildId: options.guild, userId: undefined };
+    if (options.user) scopeDesc.userId = h.select(options.user, 'at')[0]?.attrs.id ?? options.user.trim();
+    if (!options.all && !scopeDesc.guildId && !scopeDesc.userId) scopeDesc.guildId = session.guildId;
+    if (!options.all && !scopeDesc.guildId) return { error: '请指定群组或查询全局', scopeDesc };
 
-    const uids = users.map(u => u.uid);
+    const query: any = {};
+    if (scopeDesc.guildId) query.channelId = scopeDesc.guildId;
+    if (scopeDesc.userId) query.userId = scopeDesc.userId;
+
+    const users = await this.ctx.database.get('analyse_user', query, ['uid']);
+    if (users.length === 0) return { error: '在指定范围内未找到任何记录', scopeDesc };
+    return { uids: users.map(u => u.uid), scopeDesc };
+  }
+
+  /**
+   * @private @method generateTitle
+   * @description 根据查询范围和类型动态生成易于理解的图片标题。
+   * @returns 生成的标题字符串。
+   */
+  private async generateTitle(scopeDesc: { guildId?: string, userId?: string }, options: { main: string; subtype?: string; timeRange?: number; }): Promise<string> {
+    let scopeText = '全局';
+    if (scopeDesc.guildId) {
+      const [guild] = await this.ctx.database.get('analyse_user', { channelId: scopeDesc.guildId }, ['channelName']);
+      scopeText = guild?.channelName || scopeDesc.guildId;
+    }
+    if (scopeDesc.userId) {
+      const [user] = await this.ctx.database.get('analyse_user', { userId: scopeDesc.userId }, ['userName']);
+      const userName = user?.userName || scopeDesc.userId;
+      scopeText = scopeDesc.guildId ? `${userName} 在 ${scopeText}` : `${userName} 的全局`;
+    }
+
+    const typeText = options.subtype ? `“${options.subtype}”` : '';
+    if (options.main.includes('排行')) return `${scopeText}${options.timeRange}小时${typeText}消息排行`;
+    return `${scopeText}${typeText}${options.main}统计`;
+  }
+
+  private async getUserMessageStats(uids: number[]) {
+    const users = await this.ctx.database.get('analyse_user', { uid: { $in: uids } }, ['uid', 'userName']);
     const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
-
-    const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: uids } })
-      .groupBy('uid', {
-        count: row => $.sum(row.count),
-        lastUsed: row => $.max(row.timestamp)
-      })
-      .orderBy('count', 'desc').execute();
-    if (stats.length === 0) return '暂无统计数据';
-
-    const total = stats.reduce((sum, record) => sum + record.count, 0);
+    const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: uids } }).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+    if (stats.length === 0) return {};
+    const total = stats.reduce((sum, r) => sum + r.count, 0);
     const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
     return { list, total };
   }
 
-  /**
-   * @private
-   * @async
-   * @method getMessageStatsByType
-   * @description 按指定消息类型，从数据库中获取并聚合用户排行数据。
-   * @param {string} type - 要查询的消息类型。
-   * @param {string} [guildId] - (可选) 若提供，则将范围限制在此群组。
-   * @param {string} [userId] - (可选) 若提供，则将范围限制在此用户。
-   * @returns {Promise<{ list: RenderListItem[], total: number } | string>} 返回一个包含列表和总数的对象，或在无数据时返回提示字符串。
-   */
-  private async getMessageStatsByType(type: string, guildId?: string, userId?: string): Promise<{ list: RenderListItem[], total: number } | string> {
-    const query: Partial<{ channelId: string, userId: string }> = {};
-    if (guildId) query.channelId = guildId;
-    if (userId) query.userId = userId;
-    const users = await this.ctx.database.get('analyse_user', query, ['uid', 'userName']);
-    if (users.length === 0) return '暂无统计数据';
-
-    const uids = users.map(u => u.uid);
+  private async getMessageStatsByType(type: string, uids: number[]) {
+    const users = await this.ctx.database.get('analyse_user', { uid: { $in: uids } }, ['uid', 'userName']);
     const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
-
-    const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: uids }, type })
-      .groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) })
-      .orderBy('count', 'desc').execute();
-    if (stats.length === 0) return `暂无统计数据`;
-
-    const total = stats.reduce((sum, record) => sum + record.count, 0);
+    const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: uids }, type }).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+    if (stats.length === 0) return {};
+    const total = stats.reduce((sum, r) => sum + r.count, 0);
     const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
     return { list, total };
   }
 
-  /**
-   * @private
-   * @async
-   * @method getActiveUserStats
-   * @description 从数据库中获取并聚合指定时间范围内的活跃用户排行数据。
-   * @param {number} hours - 查询过去的小时数。
-   * @param {string} [guildId] - (可选) 要查询的群组 ID。若不提供，则进行全局排行。
-   * @param {string} [type] - (可选) 要筛选的消息类型。
-   * @returns {Promise<{ list: RenderListItem[], total: number } | string>} 返回一个包含列表和总数的对象，或在无数据时返回提示字符串。
-   */
-  private async getActiveUserStats(hours: number, guildId?: string, type?: string): Promise<{ list: RenderListItem[], total: number } | string> {
-    const since = new Date(Date.now() - hours * 3600 * 1000);
+  private async getActiveUserStats(hours: number, guildId?: string, type?: string) {
+    const since = new Date(Date.now() - hours * Time.hour);
     const baseQuery: any = { timestamp: { $gte: since } };
     if (type) baseQuery.type = type;
 
-    if (guildId) {
-      const usersInGuild = await this.ctx.database.get('analyse_user', { channelId: guildId }, ['uid', 'userName']);
-      if (usersInGuild.length === 0) return '暂无统计数据';
-      const uids = usersInGuild.map(u => u.uid);
-      const userNameMap = new Map(usersInGuild.map(u => [u.uid, u.userName]));
+    const uidsInScope = guildId ? (await this.ctx.database.get('analyse_user', { channelId: guildId }, ['uid'])).map(u => u.uid) : undefined;
+    if (guildId && uidsInScope.length === 0) return {};
+    if (uidsInScope) baseQuery.uid = { $in: uidsInScope };
 
-      const query = { ...baseQuery, uid: { $in: uids } };
-      const stats = await this.ctx.database.select('analyse_rank').where(query)
-        .groupBy('uid', { count: row => $.sum(row.count) }).orderBy('count', 'desc').limit(100).execute();
-      if (stats.length === 0) return '暂无统计数据';
+    const stats = await this.ctx.database.select('analyse_rank').where(baseQuery).groupBy('uid', { count: row => $.sum(row.count) }).orderBy('count', 'desc').limit(100).execute();
+    if (stats.length === 0) return {};
 
-      const total = stats.reduce((sum, record) => sum + record.count, 0);
-      const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count]);
-      return { list, total };
-    } else {
-      const msgStats = await this.ctx.database.select('analyse_rank').where(baseQuery).project(['uid', 'count']).execute();
-      if (msgStats.length === 0) return '暂无统计数据';
-      const allUsers = await this.ctx.database.get('analyse_user', {}, ['uid', 'userId', 'userName']);
-      const uidToUserMap = new Map(allUsers.map(u => [u.uid, { userId: u.userId, userName: u.userName }]));
+    const uids = stats.map(s => s.uid);
+    const users = await this.ctx.database.get('analyse_user', { uid: { $in: uids } }, ['uid', 'userName']);
+    const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
 
-      const userCounts = new Map<string, { count: number, name: string }>();
-      for (const msg of msgStats) {
-        const userInfo = uidToUserMap.get(msg.uid);
-        if (userInfo) {
-          const existing = userCounts.get(userInfo.userId);
-          userCounts.set(userInfo.userId, { count: (existing?.count || 0) + msg.count, name: userInfo.userName });
-        }
-      }
-      if (userCounts.size === 0) return '暂无统计数据';
-
-      const grandTotal = Array.from(userCounts.values()).reduce((sum, data) => sum + data.count, 0);
-      const sortedUsers = Array.from(userCounts.entries()).sort(([, a], [, b]) => b.count - a.count).slice(0, 100);
-      const list = sortedUsers.map(([userId, data]) => [data.name || userId, data.count]);
-      return { list, total: grandTotal };
-    }
+    const total = stats.reduce((sum, record) => sum + record.count, 0);
+    const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count]);
+    return { list, total };
   }
 }

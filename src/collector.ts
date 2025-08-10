@@ -1,87 +1,49 @@
-import { Context, Session, Element, Tables, $ } from 'koishi';
+import { Context, Session, Element, Tables, $, h, Time } from 'koishi';
 import { Config } from './index';
 
-// 扩展数据表类型
+// 扩展 Koishi 的数据表接口
 declare module 'koishi' {
   interface Tables {
-    analyse_user: {
-      uid: number;
-      channelId: string;
-      userId: string;
-      channelName: string;
-      userName: string;
-    };
-    analyse_cmd: {
-      uid: number;
-      command: string;
-      count: number;
-      timestamp: Date;
-    };
-    analyse_msg: {
-      uid: number;
-      type: string;
-      count: number;
-      timestamp: Date;
-    };
-    analyse_rank: {
-      uid: number;
-      type: string;
-      count: number;
-      timestamp: Date;
-    };
-    analyse_cache: {
-      id: number;
-      uid: number;
-      content: string;
-      timestamp: Date;
-    };
-    analyse_at: {
-      id: number;
-      uid: number;
-      target: string;
-      content: string;
-      timestamp: Date;
-    };
+    analyse_user: { uid: number; channelId: string; userId: string; channelName: string; userName: string };
+    analyse_cmd: { uid: number; command: string; count: number; timestamp: Date };
+    analyse_msg: { uid: number; type: string; count: number; timestamp: Date };
+    analyse_rank: { uid: number; type: string; count: number; timestamp: Date };
+    analyse_cache: { id: number; uid: number; content: string; timestamp: Date };
+    analyse_at: { id: number; uid: number; target: string; content: string; timestamp: Date };
   }
 }
 
-// 定义用户缓存对象接口
-interface UserCache {
-  uid: number;
-  userName: string;
-  channelName: string;
-}
+/** @interface UserCache - 定义用户缓存对象的结构。 */
+interface UserCache { uid: number; userName: string; channelName: string; }
 
 /**
  * @class Collector
- * @description 核心数据收集器。根据插件配置，高效地监听、收集、缓冲并持久化聊天数据。
+ * @description 核心数据收集器。根据配置，高效地监听、收集、缓冲并持久化聊天数据。
  */
 export class Collector {
-  /** @const {number} FLUSH_INTERVAL - 内存缓存区自动刷新到数据库的时间间隔。 */
-  private static readonly FLUSH_INTERVAL = 60 * 1000;
-  /** @const {number} BUFFER_THRESHOLD - 内存缓存区触发自动刷新的消息数量阈值。 */
+  /** @property FLUSH_INTERVAL - 内存缓存区定时刷入数据库的间隔（毫秒）。 */
+  private static readonly FLUSH_INTERVAL = Time.minute;
+  /** @property BUFFER_THRESHOLD - 内存缓存区触发刷新的消息数量阈值。 */
   private static readonly BUFFER_THRESHOLD = 100;
 
-  // 统一的缓冲区
+  // 统一的数据缓冲区
   private msgStatBuffer = new Map<string, { uid: number; type: string; count: number; timestamp: Date }>();
   private rankStatBuffer = new Map<string, { uid: number; timestamp: Date; type: string; count: number }>();
   private cmdStatBuffer = new Map<string, { uid: number; command: string; count: number; timestamp: Date }>();
   private oriCacheBuffer: Omit<Tables['analyse_cache'], 'id'>[] = [];
   private whoAtBuffer: Omit<Tables['analyse_at'], 'id'>[] = [];
 
-  // 用户缓存
   private userCache = new Map<string, UserCache>();
   private pendingUserRequests = new Map<string, Promise<UserCache | null>>();
   private flushInterval: NodeJS.Timeout;
 
   /**
-   * @constructor
-   * @param {Context} ctx - Koishi 的插件上下文。
-   * @param {Config} config - 插件的配置对象。
+   * @param ctx - Koishi 的插件上下文。
+   * @param config - 插件的配置对象。
    */
   constructor(private ctx: Context, private config: Config) {
     this.defineModels();
-    ctx.on('message', (session) => this.handleMessage(session));
+    ctx.on('message', (session) => this.onMessage(session));
     this.flushInterval = setInterval(() => this.flushBuffers(), Collector.FLUSH_INTERVAL);
     ctx.on('dispose', () => {
       clearInterval(this.flushInterval);
@@ -90,170 +52,108 @@ export class Collector {
   }
 
   /**
-   * @private
-   * @method defineModels
-   * @description 定义插件所需的所有数据表模型。
+   * @private @method defineModels
+   * @description 注册插件所需的所有数据表模型。
    */
   private defineModels() {
-    this.ctx.model.extend('analyse_user', {
-      uid: 'unsigned', channelId: 'string', userId: 'string', channelName: 'string', userName: 'string',
-    }, { primary: 'uid', autoInc: true, indexes: ['channelId', 'userId'] });
-    this.ctx.model.extend('analyse_cmd', {
-      uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp',
-    }, { primary: ['uid', 'command'] });
-    this.ctx.model.extend('analyse_msg', {
-      uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp',
-    }, { primary: ['uid', 'type'] });
-    this.ctx.model.extend('analyse_rank', {
-      uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp',
-    }, { primary: ['uid', 'timestamp', 'type'] });
-    if (this.config.enableOriRecord) {
-      this.ctx.model.extend('analyse_cache', {
-        id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp',
-      }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
+    this.ctx.model.extend('analyse_user', { uid: 'unsigned', channelId: 'string', userId: 'string', channelName: 'string', userName: 'string' }, { primary: 'uid', autoInc: true, indexes: ['channelId', 'userId'] });
+    this.ctx.model.extend('analyse_cmd', { uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'command'] });
+    this.ctx.model.extend('analyse_msg', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'type'] });
+    this.ctx.model.extend('analyse_rank', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'timestamp', 'type'] });
+    if (this.config.enableOriRecord) this.ctx.model.extend('analyse_cache', { id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
+    if (this.config.enableWhoAt) this.ctx.model.extend('analyse_at', { id: 'unsigned', uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['target', 'uid'] });
+  }
+
+  /**
+   * @private @method onMessage
+   * @description 统一的消息事件处理器，解析消息并更新各类统计数据的缓冲区。
+   * @param session - Koishi 的会话对象。
+   */
+  private async onMessage(session: Session) {
+    const { userId, channelId, content, timestamp, argv, elements } = session;
+    if (!channelId || !userId || !content?.trim()) return;
+
+    const user = await this.getOrCreateCachedUser(session);
+    if (!user) return;
+    const { uid } = user;
+    const messageTime = new Date(timestamp);
+
+    // 更新指令统计
+    if (argv?.command) {
+      const key = `${uid}:${argv.command.name}`;
+      const entry = this.cmdStatBuffer.get(key) ?? { uid, command: argv.command.name, count: 0, timestamp: messageTime };
+      entry.count++;
+      entry.timestamp = messageTime;
+      this.cmdStatBuffer.set(key, entry);
     }
+
+    const hourStart = new Date(messageTime.getFullYear(), messageTime.getMonth(), messageTime.getDate(), messageTime.getHours());
+
+    // 更新消息类型和发言排行统计
+    for (const type of new Set(elements.map(e => e.type))) {
+      const msgKey = `${uid}:${type}`;
+      const msgEntry = this.msgStatBuffer.get(msgKey) ?? { uid, type, count: 0, timestamp: messageTime };
+      msgEntry.count++;
+      msgEntry.timestamp = messageTime;
+      this.msgStatBuffer.set(msgKey, msgEntry);
+
+      const rankKey = `${uid}:${hourStart.toISOString()}:${type}`;
+      const rankEntry = this.rankStatBuffer.get(rankKey) ?? { uid, timestamp: hourStart, type, count: 0 };
+      rankEntry.count++;
+      this.rankStatBuffer.set(rankKey, rankEntry);
+    }
+
+    // 更新@记录
     if (this.config.enableWhoAt) {
-      this.ctx.model.extend('analyse_at', {
-        id: 'unsigned', uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp',
-      }, { primary: 'id', autoInc: true, indexes: ['target', 'uid'] });
+      const sanitizedContent = this.sanitizeContent(elements.filter(e => e.type !== 'at'));
+      for (const atElement of elements.filter(e => e.type === 'at')) {
+        const targetId = atElement.attrs.id;
+        if (targetId && targetId !== userId) {
+          this.whoAtBuffer.push({ uid, target: targetId, content: sanitizedContent, timestamp: messageTime });
+        }
+      }
+    }
+
+    // 缓存原始消息
+    if (this.config.enableOriRecord) {
+      this.oriCacheBuffer.push({ uid, content: this.sanitizeContent(elements), timestamp: messageTime });
+      if (this.oriCacheBuffer.length >= Collector.BUFFER_THRESHOLD) await this.flushBuffers();
     }
   }
 
   /**
-   * @private
-   * @async
-   * @method handleMessage
-   * @description 统一的消息和命令处理器。它会解析收到的消息，提取关键信息并更新相应的统计数据。
-   * @param {Session} session - Koishi 的会话对象，包含消息的全部信息。
+   * @private @method getOrCreateCachedUser
+   * @description 高效获取或创建用户的缓存记录，利用内存缓存和请求锁机制防止重复查询。
+   * @param session - Koishi 会话对象。
+   * @returns 返回用户的缓存对象，失败则返回 `null`。
    */
-  private async handleMessage(session: Session) {
-    try {
-      const { userId, channelId, guildId, content, timestamp, argv, elements } = session;
-      const effectiveId = channelId || guildId;
-      if (!effectiveId || !userId || !timestamp || !content?.trim()) return;
+  private getOrCreateCachedUser(session: Session): Promise<UserCache | null> {
+    const { userId, channelId, bot } = session;
+    const cacheKey = `${channelId}:${userId}`;
 
-      const user = await this.getOrCreateCachedUser(session, effectiveId);
-      if (!user) return;
-      const { uid } = user;
-
-      const messageTime = new Date(timestamp);
-
-      // 聚合命令统计到缓冲区
-      if (argv?.command) {
-        const key = `${uid}:${argv.command.name}`;
-        const existing = this.cmdStatBuffer.get(key);
-        if (existing) {
-          existing.count++;
-          existing.timestamp = messageTime;
-        } else {
-          this.cmdStatBuffer.set(key, { uid, command: argv.command.name, count: 1, timestamp: messageTime });
-        }
-      }
-
-      const hourStart = new Date(messageTime.getFullYear(), messageTime.getMonth(), messageTime.getDate(), messageTime.getHours());
-
-      // 聚合消息类型和发言排行统计到缓冲区
-      const uniqueElementTypes = new Set(elements.map(e => e.type));
-      for (const type of uniqueElementTypes) {
-        // 消息类型统计
-        const msgKey = `${uid}:${type}`;
-        const existingMsg = this.msgStatBuffer.get(msgKey);
-        if (existingMsg) {
-          existingMsg.count++;
-          existingMsg.timestamp = messageTime;
-        } else {
-          this.msgStatBuffer.set(msgKey, { uid, type, count: 1, timestamp: messageTime });
-        }
-
-        // 发言排行统计
-        const rankKey = `${uid}:${hourStart.toISOString()}:${type}`;
-        const existingRank = this.rankStatBuffer.get(rankKey);
-        if (existingRank) {
-          existingRank.count++;
-        } else {
-          this.rankStatBuffer.set(rankKey, { uid, timestamp: hourStart, type, count: 1 });
-        }
-      }
-
-      // 聚合 @ 记录到缓冲区
-      if (this.config.enableWhoAt) {
-        const atElements = elements.filter(e => e.type === 'at');
-        if (atElements.length > 0) {
-          const contentElements = elements.filter(e => e.type !== 'at');
-          const sanitizedContent = this.sanitizeContent(contentElements);
-          for (const atElement of atElements) {
-            const targetId = atElement.attrs.id;
-            if (targetId && targetId !== userId) this.whoAtBuffer.push({ uid, target: targetId, content: sanitizedContent, timestamp: messageTime });
-          }
-        }
-      }
-
-      // 聚合原始消息到缓冲区
-      if (this.config.enableOriRecord) {
-        this.oriCacheBuffer.push({
-          uid,
-          content: this.sanitizeContent(elements),
-          timestamp: messageTime,
-        });
-        if (this.oriCacheBuffer.length >= Collector.BUFFER_THRESHOLD) await this.flushBuffers();
-      }
-    } catch (error) {
-      this.ctx.logger.warn('消息处理出错:', error);
-    }
-  }
-
-  /**
-   * @private
-   * @async
-   * @method getOrCreateCachedUser
-   * @description 高效地获取或创建用户的中央记录，并全面利用缓存。
-   * @param {Session} session - Koishi 会话对象，用于获取用户信息和 Bot 实例。
-   * @param {string} channelId - 消息所在的频道或群组 ID。
-   * @returns {Promise<UserCache | null>} 返回用户的缓存对象，如果操作失败则返回 `null`。
-   */
-  private async getOrCreateCachedUser(session: Session, channelId: string): Promise<UserCache | null> {
-    const { userId, guildId, bot } = session;
-    const effectiveId = guildId || channelId;
-    const cacheKey = `${effectiveId}:${userId}`;
-
-    if (this.userCache.has(cacheKey)) return this.userCache.get(cacheKey);
+    if (this.userCache.has(cacheKey)) return Promise.resolve(this.userCache.get(cacheKey));
     if (this.pendingUserRequests.has(cacheKey)) return this.pendingUserRequests.get(cacheKey);
 
     const promise = (async (): Promise<UserCache | null> => {
       try {
-        const dbUsers = await this.ctx.database.get('analyse_user', { channelId: effectiveId, userId });
-        const dbUser = dbUsers[0];
-
-        const currentUserName = session.username || '';
-        let currentChannelName = '';
-        if (effectiveId && bot.getGuild) {
-          const guild = await bot.getGuild(effectiveId);
-          currentChannelName = guild?.name || '';
-        }
+        const [dbUser] = await this.ctx.database.get('analyse_user', { channelId, userId });
+        const currentUserName = session.username ?? '';
+        const guild = await bot.getGuild(channelId).catch(() => null);
+        const currentChannelName = guild?.name ?? '';
 
         if (dbUser) {
-          const nameChanged = currentUserName && dbUser.userName !== currentUserName;
-          const channelNameChanged = currentChannelName && dbUser.channelName !== currentChannelName;
-
-          if (nameChanged || channelNameChanged) {
-            dbUser.userName = nameChanged ? currentUserName : dbUser.userName;
-            dbUser.channelName = channelNameChanged ? currentChannelName : dbUser.channelName;
-            await this.ctx.database.set('analyse_user', { uid: dbUser.uid }, {
-              userName: dbUser.userName,
-              channelName: dbUser.channelName,
-            });
+          if ((currentUserName && dbUser.userName !== currentUserName) || (currentChannelName && dbUser.channelName !== currentChannelName)) {
+            await this.ctx.database.set('analyse_user', { uid: dbUser.uid }, { userName: currentUserName, channelName: currentChannelName });
+            dbUser.userName = currentUserName;
+            dbUser.channelName = currentChannelName;
           }
-
           this.userCache.set(cacheKey, dbUser);
           return dbUser;
         }
 
-        const createdUser = await this.ctx.database.create('analyse_user', {
-          channelId: effectiveId, userId, userName: currentUserName, channelName: currentChannelName,
-        });
+        const createdUser = await this.ctx.database.create('analyse_user', { channelId, userId, userName: currentUserName, channelName: currentChannelName });
         this.userCache.set(cacheKey, createdUser);
         return createdUser;
-
       } catch (error) {
         this.ctx.logger.error(`创建或获取用户(${cacheKey})失败:`, error);
         return null;
@@ -267,84 +167,44 @@ export class Collector {
   }
 
   /**
-   * @private
-   * @method sanitizeContent
-   * @description 将 Koishi 的消息元素 (Element) 数组净化为纯文本字符串，以便存储和分析。
-   * @param {Element[]} elements - 消息元素的数组。
-   * @returns {string} 净化后的纯文本字符串。
+   * @private @method sanitizeContent
+   * @description 将 Koishi 消息元素数组净化为纯文本字符串。
+   * @param elements - 消息元素数组。
+   * @returns 净化后的纯文本。
    */
-  private sanitizeContent = (elements: Element[]): string =>
-    elements.map(e => {
-      switch (e.type) {
-        case 'text': return e.attrs.content;
-        case 'img': return e.attrs.summary === '[动画表情]' ? '[gif]' : '[img]';
-        case 'at': return `[at:${e.attrs.id}]`;
-        default: return `[${e.type}]`;
-      }
-    }).join('');
+  private sanitizeContent = (elements: Element[]): string => h.transform(elements, {
+    text: (attrs) => attrs.content,
+    img: (attrs) => attrs.summary === '[动画表情]' ? '[gif]' : '[img]',
+    at: (attrs) => `[at:${attrs.id}]`,
+  }, '').join('');
 
   /**
-   * @private
-   * @async
-   * @method flushBuffers
-   * @description 将所有内存中的缓冲区数据批量写入数据库。
+   * @private @method flushBuffers
+   * @description 将所有内存中的数据缓冲区批量写入数据库，并清空缓冲区。
    */
   private async flushBuffers() {
-    const cmdBufferToFlush = Array.from(this.cmdStatBuffer.values());
-    const msgBufferToFlush = Array.from(this.msgStatBuffer.values());
-    const rankBufferToFlush = Array.from(this.rankStatBuffer.values());
-    const oriCacheBufferToFlush = this.oriCacheBuffer;
-    const whoAtBufferToFlush = this.whoAtBuffer;
+    const buffers = {
+      cmd: Array.from(this.cmdStatBuffer.values()),
+      msg: Array.from(this.msgStatBuffer.values()),
+      rank: Array.from(this.rankStatBuffer.values()),
+      at: this.whoAtBuffer,
+      cache: this.oriCacheBuffer,
+    };
+
     this.cmdStatBuffer.clear();
     this.msgStatBuffer.clear();
     this.rankStatBuffer.clear();
-    this.oriCacheBuffer = [];
     this.whoAtBuffer = [];
+    this.oriCacheBuffer = [];
 
     try {
-      // 写入命令统计
-      if (cmdBufferToFlush.length > 0) {
-        await this.ctx.database.upsert('analyse_cmd', (row) =>
-          cmdBufferToFlush.map(item => ({
-            uid: item.uid,
-            command: item.command,
-            count: $.add($.ifNull(row.count, 0), item.count),
-            timestamp: item.timestamp,
-          }))
-        );
-      }
-
-      // 写入消息统计
-      if (msgBufferToFlush.length > 0) {
-        await this.ctx.database.upsert('analyse_msg', (row) =>
-          msgBufferToFlush.map(item => ({
-            uid: item.uid,
-            type: item.type,
-            count: $.add($.ifNull(row.count, 0), item.count),
-            timestamp: item.timestamp,
-          }))
-        );
-      }
-
-      // 写入发言排行数据
-      if (rankBufferToFlush.length > 0) {
-        await this.ctx.database.upsert('analyse_rank', (row) =>
-          rankBufferToFlush.map(item => ({
-            uid: item.uid,
-            timestamp: item.timestamp,
-            type: item.type,
-            count: $.add($.ifNull(row.count, 0), item.count),
-          }))
-        );
-      }
-
-      // 写入 "谁@我" 记录
-      if (whoAtBufferToFlush.length > 0) await this.ctx.database.upsert('analyse_at', whoAtBufferToFlush);
-
-      // 写入原始消息记录
-      if (oriCacheBufferToFlush.length > 0) await this.ctx.database.upsert('analyse_cache', oriCacheBufferToFlush);
+      if (buffers.cmd.length > 0) await this.ctx.database.upsert('analyse_cmd', (row) => buffers.cmd.map(item => ({ ...item, count: $.add($.ifNull(row.count, 0), item.count) })));
+      if (buffers.msg.length > 0) await this.ctx.database.upsert('analyse_msg', (row) => buffers.msg.map(item => ({ ...item, count: $.add($.ifNull(row.count, 0), item.count) })));
+      if (buffers.rank.length > 0) await this.ctx.database.upsert('analyse_rank', (row) => buffers.rank.map(item => ({ ...item, count: $.add($.ifNull(row.count, 0), item.count) })));
+      if (buffers.at.length > 0) await this.ctx.database.upsert('analyse_at', buffers.at);
+      if (buffers.cache.length > 0) await this.ctx.database.upsert('analyse_cache', buffers.cache);
     } catch (error) {
-      this.ctx.logger.error('写入数据出错:', error);
+      this.ctx.logger.error('数据库刷写失败:', error);
     }
   }
 }

@@ -4,10 +4,7 @@ import { Stat } from './Stat';
 import { WhoAt } from './WhoAt';
 import { Data } from './Data';
 
-/**
- * @name 插件使用说明
- * @description 在 Koishi 控制台中显示的插件介绍和帮助信息。
- */
+/** @name 插件使用说明 */
 export const usage = `
 <div style="border-radius: 10px; border: 1px solid #ddd; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
   <h2 style="margin-top: 0; color: #4a6ee0;">📌 插件说明</h2>
@@ -40,15 +37,12 @@ export interface Config {
   rankRetentionDays: number;
 }
 
-/**
- * @const {Schema<Config>} Config
- * @description 使用 Koishi 的 `Schema` 来定义配置项的类型、默认值和在控制台中的交互界面。
- */
+/** @description 插件的配置项定义，使用 Koishi Schema 构建。 */
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableListener: Schema.boolean().default(true).description('启用消息监听'),
     enableData: Schema.boolean().default(false).description('启用数据管理'),
-  }).description('监听配置'),
+  }).description('基础配置'),
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
@@ -59,25 +53,24 @@ export const Config: Schema<Config> = Schema.intersect([
     rankRetentionDays: Schema.number().min(0).default(31).description('记录保留天数'),
   }).description('发言排行配置'),
   Schema.object({
-    enableWhoAt: Schema.boolean().default(true).description('启用 @ 记录'),
+    enableWhoAt: Schema.boolean().default(true).description('启用@记录'),
     atRetentionDays: Schema.number().min(0).default(7).description('记录保留天数'),
-  }).description('@ 记录配置'),
+  }).description('@记录配置'),
 ]);
 
 /**
  * @function apply
- * @description Koishi 插件的主入口函数。
- * @param {Context} ctx - Koishi 的插件上下文，提供了访问核心 API 的能力。
- * @param {Config} config - 用户在 `koishi.config.js` 或控制台中配置的对象。
+ * @description Koishi 插件的主入口函数，负责初始化和注册所有功能模块。
+ * @param ctx - Koishi 的插件上下文。
+ * @param config - 用户配置对象。
  */
 export function apply(ctx: Context, config: Config) {
   if (config.enableListener) new Collector(ctx, config);
-  // 注册主命令
+
   const analyse = ctx.command('analyse', '聊天记录分析');
-  // 注册统计查询子命令
+
+  // 动态注册功能模块
   new Stat(ctx, config).registerCommands(analyse);
-  // 注册 @ 记录子命令
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
-  // 注册数据管理子命令
   if (config.enableData) new Data(ctx).registerCommands(analyse);
 }
