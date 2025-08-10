@@ -1,6 +1,7 @@
 import { Context, Schema } from 'koishi';
 import { Collector } from './Collector';
 import { Stat } from './Stat';
+import { WhoAt } from './WhoAt';
 
 /**
  * @name 插件使用说明
@@ -20,7 +21,7 @@ export const usage = `
 `;
 
 export const name = 'chat-analyse';
-export const using = ['database', 'puppeteer'];
+export const using = ['database', 'puppeteer', 'cron'];
 
 /**
  * @interface Config
@@ -32,6 +33,8 @@ export interface Config {
   enableMsgStat: boolean;
   enableRankStat: boolean;
   enableOriRecord: boolean;
+  enableWhoAt: boolean;
+  retentionDays: number;
 }
 
 /**
@@ -48,6 +51,10 @@ export const Config: Schema<Config> = Schema.intersect([
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
   }).description('命令配置'),
+  Schema.object({
+    enableWhoAt: Schema.boolean().default(true).description('启用 @ 记录'),
+    retentionDays: Schema.number().min(0).default(7).description('保留天数'),
+  }).description('@ 记录配置'),
 ]);
 
 /**
@@ -61,4 +68,5 @@ export function apply(ctx: Context, config: Config) {
   // 注册统计查询命令
   const analyse = ctx.command('analyse', '聊天记录分析');
   new Stat(ctx, config).registerCommands(analyse);
+  if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
 }

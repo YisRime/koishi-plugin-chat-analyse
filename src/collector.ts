@@ -1,4 +1,4 @@
-import { Context, Session, Element, Tables, $ } from 'koishi';
+import { Context, Session, Element, Tables, $, Time } from 'koishi';
 import { Config } from './index';
 
 // 扩展数据表类型
@@ -30,6 +30,12 @@ declare module 'koishi' {
       content: string;
       timestamp: Date;
     };
+    analyse_at: {
+      uid: number;
+      target: string;
+      content: string;
+      timestamp: Date;
+    };
   }
 }
 
@@ -54,6 +60,7 @@ export class Collector {
   private msgStatBuffer = new Map<string, { uid: number; type: string; hour: Date; count: number; timestamp: Date }>();
   private cmdStatBuffer = new Map<string, { uid: number; command: string; count: number; timestamp: Date }>();
   private oriCacheBuffer: Omit<Tables['analyse_cache'], 'id'>[] = [];
+  private whoAtBuffer: Omit<Tables['analyse_at'], 'id'>[] = [];
 
   // 用户缓存
   private userCache = new Map<string, UserCache>();
@@ -94,6 +101,11 @@ export class Collector {
       this.ctx.model.extend('analyse_cache', {
         id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp',
       }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
+    }
+    if (this.config.enableWhoAt) {
+      this.ctx.model.extend('analyse_at', {
+        uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp',
+      }, { indexes: ['target', 'uid'] });
     }
   }
 
@@ -139,6 +151,18 @@ export class Collector {
           existing.timestamp = messageTime;
         } else {
           this.msgStatBuffer.set(key, { uid, type, hour: hourStart, count: 1, timestamp: messageTime });
+        }
+      }
+
+      // 聚合“谁@我”到缓冲区
+      if (this.config.enableWhoAt) {
+        const atElements = elements.filter(e => e.type === 'at');
+        if (atElements.length > 0) {
+          const sanitizedContent = this.sanitizeContent(elements);
+          for (const atElement of atElements) {
+            const targetId = atElement.attrs.id;
+            if (targetId && targetId !== userId) this.whoAtBuffer.push({ uid, target: targetId, content: sanitizedContent, timestamp: messageTime });
+          }
         }
       }
 
@@ -238,10 +262,12 @@ export class Collector {
   private async flushBuffers() {
     const cmdBufferToFlush = Array.from(this.cmdStatBuffer.values());
     const msgBufferToFlush = Array.from(this.msgStatBuffer.values());
-    const advancedBufferToFlush = this.oriCacheBuffer;
+    const oriCacheBufferToFlush = this.oriCacheBuffer;
+    const whoAtBufferToFlush = this.whoAtBuffer;
     this.cmdStatBuffer.clear();
     this.msgStatBuffer.clear();
     this.oriCacheBuffer = [];
+    this.whoAtBuffer = [];
 
     try {
       // 写入命令统计
@@ -269,8 +295,11 @@ export class Collector {
         );
       }
 
+      // 写入 "谁@我" 记录
+      if (whoAtBufferToFlush.length > 0) await this.ctx.database.upsert('analyse_at', whoAtBufferToFlush);
+
       // 写入原始消息记录
-      if (advancedBufferToFlush.length > 0) await this.ctx.database.upsert('analyse_cache', advancedBufferToFlush);
+      if (oriCacheBufferToFlush.length > 0) await this.ctx.database.upsert('analyse_cache', oriCacheBufferToFlush);
     } catch (error) {
       this.ctx.logger.error('写入数据出错:', error);
     }
