@@ -1,4 +1,4 @@
-import { Context, Command, h, Session, $, Time } from 'koishi';
+import { Context, Command, h, Time } from 'koishi';
 import {} from 'koishi-plugin-cron';
 import { Config } from './index';
 
@@ -24,13 +24,13 @@ export class WhoAt {
    * @private
    * @method setupCleanupTask
    * @description 设置一个定时清理任务。
-   * 此任务会根据配置中的 `retentionDays` 定期删除过期的@记录，以防止数据库膨胀。
+   * 此任务会根据配置中的 `atRetentionDays` 定期删除过期的@记录，以防止数据库膨胀。
    */
   private setupCleanupTask() {
-    if (this.config.retentionDays > 0) {
+    if (this.config.atRetentionDays > 0) {
       this.ctx.cron('0 0 * * *', async () => {
         try {
-          const cutoffDate = new Date(Date.now() - this.config.retentionDays * Time.day);
+          const cutoffDate = new Date(Date.now() - this.config.atRetentionDays * Time.day);
           await this.ctx.database.remove('analyse_at', { timestamp: { $lt: cutoffDate } });
         } catch (error) {
           this.ctx.logger.error('清理 @ 历史记录出错:', error);

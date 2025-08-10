@@ -1,4 +1,4 @@
-import { Context, Command, $, h, Element, Session } from 'koishi';
+import { Context, Command, $, h, Element, Session, Time } from 'koishi';
 import { Renderer, RenderListItem } from './Renderer';
 import { Config } from './index';
 
@@ -20,6 +20,26 @@ export class Stat {
    */
   constructor(private ctx: Context, private config: Config) {
     this.renderer = new Renderer(ctx);
+    this.setupCleanupTask();
+  }
+
+  /**
+   * @private
+   * @method setupCleanupTask
+   * @description 设置一个定时清理任务。
+   * 此任务会根据配置中的 `rankRetentionDays` 定期删除过期的发言排行数据，以防止数据库膨胀。
+   */
+  private setupCleanupTask() {
+    if (this.config.rankRetentionDays > 0) {
+      this.ctx.cron('0 0 * * *', async () => {
+        try {
+          const cutoffDate = new Date(Date.now() - this.config.rankRetentionDays * Time.day);
+          await this.ctx.database.remove('analyse_rank', { hour: { $lt: cutoffDate } });
+        } catch (error) {
+          this.ctx.logger.error('清理发言排行历史记录出错:', error);
+        }
+      });
+    }
   }
 
   /**

@@ -34,7 +34,8 @@ export interface Config {
   enableRankStat: boolean;
   enableOriRecord: boolean;
   enableWhoAt: boolean;
-  retentionDays: number;
+  atRetentionDays: number;
+  rankRetentionDays: number;
 }
 
 /**
@@ -49,11 +50,14 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
+  }).description('统计配置'),
+  Schema.object({
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
-  }).description('命令配置'),
+    rankRetentionDays: Schema.number().min(0).default(31).description('记录保留天数'),
+  }).description('发言排行配置'),
   Schema.object({
     enableWhoAt: Schema.boolean().default(true).description('启用 @ 记录'),
-    retentionDays: Schema.number().min(0).default(7).description('保留天数'),
+    atRetentionDays: Schema.number().min(0).default(7).description('记录保留天数'),
   }).description('@ 记录配置'),
 ]);
 
