@@ -212,43 +212,44 @@ export class Collector {
    * @returns {Promise<UserCache | null>} 返回用户的缓存对象，如果操作失败则返回 `null`。
    */
   private async getOrCreateCachedUser(session: Session, channelId: string): Promise<UserCache | null> {
-    const { userId, bot } = session;
-    const cacheKey = `${channelId}:${userId}`;
+    const { userId, guildId, bot } = session;
+    const effectiveId = guildId || channelId;
+    const cacheKey = `${effectiveId}:${userId}`;
 
     if (this.userCache.has(cacheKey)) return this.userCache.get(cacheKey);
     if (this.pendingUserRequests.has(cacheKey)) return this.pendingUserRequests.get(cacheKey);
 
     const promise = (async (): Promise<UserCache | null> => {
       try {
-        const sessionUserName = session.username || '';
-        const sessionChannelName = session.event._data.raw.peerName || (session as any).guild.name || '';
-        const dbUser = await this.ctx.database.get('analyse_user', { channelId, userId: userId });
+        const dbUsers = await this.ctx.database.get('analyse_user', { channelId: effectiveId, userId });
+        const dbUser = dbUsers[0];
 
-        if (dbUser[0]) {
-          const user = dbUser[0];
-          const nameChanged = sessionUserName && user.userName !== sessionUserName;
-          const channelNameChanged = sessionChannelName && user.channelName !== sessionChannelName;
-
-          if (nameChanged || channelNameChanged) {
-            user.userName = nameChanged ? sessionUserName : user.userName;
-            user.channelName = channelNameChanged ? sessionChannelName : user.channelName;
-            await this.ctx.database.set('analyse_user', { uid: user.uid }, { userName: user.userName, channelName: user.channelName });
-          }
-          this.userCache.set(cacheKey, user);
-          return user;
+        const currentUserName = session.username || '';
+        let currentChannelName = '';
+        if (effectiveId && bot.getGuild) {
+          const guild = await bot.getGuild(effectiveId);
+          currentChannelName = guild?.name || '';
         }
 
-        let finalUserName = sessionUserName;
-        let finalChannelName = sessionChannelName;
+        if (dbUser) {
+          const nameChanged = currentUserName && dbUser.userName !== currentUserName;
+          const channelNameChanged = currentChannelName && dbUser.channelName !== currentChannelName;
 
-        if (!finalUserName || !finalChannelName) {
-          const apiData = await this.fetchApiNames(bot, session.guildId || channelId, userId);
-          finalUserName = finalUserName || apiData.userName;
-          finalChannelName = finalChannelName || apiData.channelName;
+          if (nameChanged || channelNameChanged) {
+            dbUser.userName = nameChanged ? currentUserName : dbUser.userName;
+            dbUser.channelName = channelNameChanged ? currentChannelName : dbUser.channelName;
+            await this.ctx.database.set('analyse_user', { uid: dbUser.uid }, {
+              userName: dbUser.userName,
+              channelName: dbUser.channelName,
+            });
+          }
+
+          this.userCache.set(cacheKey, dbUser);
+          return dbUser;
         }
 
         const createdUser = await this.ctx.database.create('analyse_user', {
-          channelId, userId, userName: finalUserName, channelName: finalChannelName,
+          channelId: effectiveId, userId, userName: currentUserName, channelName: currentChannelName,
         });
         this.userCache.set(cacheKey, createdUser);
         return createdUser;
@@ -263,33 +264,6 @@ export class Collector {
 
     this.pendingUserRequests.set(cacheKey, promise);
     return promise;
-  }
-
-  /**
-   * @private
-   * @async
-   * @method fetchApiNames
-   * @description 并发调用机器人API以获取用户和频道名称，作为备用数据源。
-   * @param bot - The bot instance.
-   * @param guildId - The guild ID.
-   * @param userId - The user ID.
-   * @returns {Promise<{userName: string, channelName: string}>} - 包含名称的对象。
-   */
-  private async fetchApiNames(bot: any, guildId: string, userId: string): Promise<{ userName: string, channelName: string }> {
-    const results = await Promise.allSettled([
-      (guildId && bot.getGuildMember) ? bot.getGuildMember(guildId, userId) : Promise.resolve(null),
-      bot.getUser ? bot.getUser(userId) : Promise.resolve(null),
-      (guildId && bot.getGuild) ? bot.getGuild(guildId) : Promise.resolve(null),
-    ]);
-
-    const member = results[0].status === 'fulfilled' ? results[0].value : null;
-    const user = results[1].status === 'fulfilled' ? results[1].value : null;
-    const guild = results[2].status === 'fulfilled' ? results[2].value : null;
-
-    return {
-      userName: member?.username || member?.nick || member?.name || user?.name || '',
-      channelName: guild?.name || '',
-    };
   }
 
   /**
