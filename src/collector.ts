@@ -36,6 +36,7 @@ declare module 'koishi' {
       timestamp: Date;
     };
     analyse_at: {
+      id: number;
       uid: number;
       target: string;
       content: string;
@@ -61,7 +62,7 @@ export class Collector {
   /** @const {number} BUFFER_THRESHOLD - 内存缓存区触发自动刷新的消息数量阈值。 */
   private static readonly BUFFER_THRESHOLD = 100;
 
-  // 分离的缓冲区
+  // 统一的缓冲区
   private msgStatBuffer = new Map<string, { uid: number; type: string; count: number; timestamp: Date }>();
   private rankStatBuffer = new Map<string, { uid: number; hour: Date; count: number; timestamp: Date }>();
   private cmdStatBuffer = new Map<string, { uid: number; command: string; count: number; timestamp: Date }>();
@@ -113,8 +114,8 @@ export class Collector {
     }
     if (this.config.enableWhoAt) {
       this.ctx.model.extend('analyse_at', {
-        uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp',
-      }, { indexes: ['target', 'uid'] });
+        id: 'unsigned', uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp',
+      }, { primary: 'id', autoInc: true, indexes: ['target', 'uid'] });
     }
   }
 
