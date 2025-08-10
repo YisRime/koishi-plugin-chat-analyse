@@ -185,5 +185,21 @@ export class Data {
           return '数据清理失败';
         }
       });
+
+    analyse.subcommand('.list', '列出频道及命令', { authority: 4 })
+      .action(async () => {
+        const allChannelInfo = await this.ctx.database.get('analyse_user', {}, ['channelId', 'channelName']);
+        const uniqueChannels = [...new Map(allChannelInfo.map(item => [item.channelId, item])).values()];
+        const channelOutput = uniqueChannels.length > 0
+          ? '频道列表:\n' + uniqueChannels.map(c => `[${c.channelId}] ${c.channelName}`).join('\n')
+          : '暂无频道记录';
+
+        const commands = await (this.ctx.database.select('analyse_cmd') as any).distinct('command').execute();
+        const commandOutput = commands.length > 0
+          ? '命令列表:\n' + commands.map(c => c.command).join(', ')
+          : '暂无命令记录';
+
+        return `${channelOutput}\n${commandOutput}`;
+      });
   }
 }

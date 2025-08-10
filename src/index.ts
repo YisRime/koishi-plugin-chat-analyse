@@ -3,7 +3,6 @@ import { Collector } from './Collector';
 import { Stat } from './Stat';
 import { WhoAt } from './WhoAt';
 import { Data } from './Data';
-import { Debug } from './Debug';
 
 /**
  * @name 插件使用说明
@@ -37,7 +36,6 @@ export interface Config {
   enableOriRecord: boolean;
   enableWhoAt: boolean;
   enableData: boolean;
-  enableDebug: boolean;
   atRetentionDays: number;
   rankRetentionDays: number;
 }
@@ -49,11 +47,12 @@ export interface Config {
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableListener: Schema.boolean().default(true).description('启用消息监听'),
-    enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
+    enableData: Schema.boolean().default(false).description('启用数据管理'),
   }).description('监听配置'),
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
+    enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
   }).description('功能配置'),
   Schema.object({
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
@@ -63,10 +62,6 @@ export const Config: Schema<Config> = Schema.intersect([
     enableWhoAt: Schema.boolean().default(true).description('启用 @ 记录'),
     atRetentionDays: Schema.number().min(0).default(7).description('记录保留天数'),
   }).description('@ 记录配置'),
-  Schema.object({
-      enableData: Schema.boolean().default(false).description('启用数据管理'),
-      enableDebug: Schema.boolean().default(false).description('启用调试工具'),
-  }).description('高级功能'),
 ]);
 
 /**
@@ -85,6 +80,4 @@ export function apply(ctx: Context, config: Config) {
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
   // 注册数据管理子命令
   if (config.enableData) new Data(ctx).registerCommands(analyse);
-  // 注册调试工具子命令
-  if (config.enableDebug) new Debug(ctx).registerCommands(analyse);
 }
