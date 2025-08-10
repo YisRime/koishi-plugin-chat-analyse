@@ -220,12 +220,11 @@ export class Collector {
 
     const promise = (async (): Promise<UserCache | null> => {
       try {
-        const existing = await this.ctx.database.get('analyse_user', { channelId, userId });
-        if (existing.length > 0) {
-          const { uid, userName, channelName } = existing[0];
-          const cachedUser = { uid, userName, channelName };
-          this.userCache.set(cacheKey, cachedUser);
-          return cachedUser;
+        const [dbUser] = await this.ctx.database.get('analyse_user', { channelId, userId });
+
+        if (dbUser && dbUser.userName && dbUser.channelName) {
+          this.userCache.set(cacheKey, dbUser);
+          return dbUser;
         }
 
         const [guild, member] = await Promise.all([
@@ -234,18 +233,31 @@ export class Collector {
         ]);
         const user = !member ? await bot.getUser(userId).catch(() => null) : null;
 
-        const newUserRecord = {
-          channelId,
-          userId,
-          channelName: guild?.name || channelId,
-          userName: member?.nick || member?.name || user?.name || userId,
-        };
+        const fetchedUserName = member?.nick || member?.name || user?.name || '';
+        const fetchedChannelName = guild?.name || '';
 
-        const createdUser = await this.ctx.database.create('analyse_user', newUserRecord);
-        const { uid, userName, channelName } = createdUser;
-        const cachedUser: UserCache = { uid, userName, channelName };
-        this.userCache.set(cacheKey, cachedUser);
-        return cachedUser;
+        if (dbUser) {
+          const needsUpdate = (!dbUser.userName && fetchedUserName) || (!dbUser.channelName && fetchedChannelName);
+          if (needsUpdate) {
+            dbUser.userName = dbUser.userName || fetchedUserName;
+            dbUser.channelName = dbUser.channelName || fetchedChannelName;
+            await this.ctx.database.set('analyse_user', { uid: dbUser.uid }, {
+              userName: dbUser.userName,
+              channelName: dbUser.channelName,
+            });
+          }
+          if (dbUser.userName && dbUser.channelName) this.userCache.set(cacheKey, dbUser);
+          return dbUser;
+        } else {
+          const createdUser = await this.ctx.database.create('analyse_user', {
+            channelId,
+            userId,
+            userName: fetchedUserName,
+            channelName: fetchedChannelName,
+          });
+          if (createdUser.userName && createdUser.channelName) this.userCache.set(cacheKey, createdUser);
+          return createdUser;
+        }
       } catch (error) {
         this.ctx.logger.error(`创建或获取用户(${cacheKey})失败:`, error);
         return null;

@@ -65,8 +65,9 @@ export class WhoAt {
 
           const messageElements = records.map(record => {
             const senderInfo = userInfoMap.get(record.uid);
-            const userId = senderInfo?.id;
-            const authorElement = h('author', { userId, name: userId });
+            const userId = senderInfo.id;
+            const userName = senderInfo.name || userId;
+            const authorElement = h('author', { userId, name: userName });
             const contentElement = h.text(record.content);
             return h('message', {}, [authorElement, contentElement]);
           });
