@@ -20,6 +20,11 @@ declare module 'koishi' {
     analyse_msg: {
       uid: number;
       type: string;
+      count: number;
+      timestamp: Date;
+    };
+    analyse_rank: {
+      uid: number;
       hour: Date;
       count: number;
       timestamp: Date;
@@ -56,8 +61,9 @@ export class Collector {
   /** @const {number} BUFFER_THRESHOLD - 内存缓存区触发自动刷新的消息数量阈值。 */
   private static readonly BUFFER_THRESHOLD = 100;
 
-  // 统一的缓冲区
-  private msgStatBuffer = new Map<string, { uid: number; type: string; hour: Date; count: number; timestamp: Date }>();
+  // 分离的缓冲区
+  private msgStatBuffer = new Map<string, { uid: number; type: string; count: number; timestamp: Date }>();
+  private rankStatBuffer = new Map<string, { uid: number; hour: Date; count: number; timestamp: Date }>();
   private cmdStatBuffer = new Map<string, { uid: number; command: string; count: number; timestamp: Date }>();
   private oriCacheBuffer: Omit<Tables['analyse_cache'], 'id'>[] = [];
   private whoAtBuffer: Omit<Tables['analyse_at'], 'id'>[] = [];
@@ -95,8 +101,11 @@ export class Collector {
       uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp',
     }, { primary: ['uid', 'command'] });
     this.ctx.model.extend('analyse_msg', {
-      uid: 'unsigned', type: 'string', hour: 'timestamp', count: 'unsigned', timestamp: 'timestamp',
-    }, { primary: ['uid', 'type', 'hour'] });
+      uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp',
+    }, { primary: ['uid', 'type'] });
+    this.ctx.model.extend('analyse_rank', {
+      uid: 'unsigned', hour: 'timestamp', count: 'unsigned', timestamp: 'timestamp',
+    }, { primary: ['uid', 'hour'] });
     if (this.config.enableOriRecord) {
       this.ctx.model.extend('analyse_cache', {
         id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp',
@@ -140,17 +149,28 @@ export class Collector {
         }
       }
 
-      // 聚合消息统计到缓冲区
       const hourStart = new Date(messageTime.getFullYear(), messageTime.getMonth(), messageTime.getDate(), messageTime.getHours());
+
+      // 聚合发言排行统计到缓冲区
+      const rankKey = `${uid}:${hourStart.toISOString()}`;
+      const existingRank = this.rankStatBuffer.get(rankKey);
+      if (existingRank) {
+        existingRank.count++;
+        existingRank.timestamp = messageTime;
+      } else {
+        this.rankStatBuffer.set(rankKey, { uid, hour: hourStart, count: 1, timestamp: messageTime });
+      }
+
+      // 聚合消息类型统计到缓冲区
       const uniqueElementTypes = new Set(elements.map(e => e.type));
       for (const type of uniqueElementTypes) {
-        const key = `${uid}:${type}:${hourStart.toISOString()}`;
+        const key = `${uid}:${type}`;
         const existing = this.msgStatBuffer.get(key);
         if (existing) {
           existing.count++;
           existing.timestamp = messageTime;
         } else {
-          this.msgStatBuffer.set(key, { uid, type, hour: hourStart, count: 1, timestamp: messageTime });
+          this.msgStatBuffer.set(key, { uid, type, count: 1, timestamp: messageTime });
         }
       }
 
@@ -262,10 +282,12 @@ export class Collector {
   private async flushBuffers() {
     const cmdBufferToFlush = Array.from(this.cmdStatBuffer.values());
     const msgBufferToFlush = Array.from(this.msgStatBuffer.values());
+    const rankBufferToFlush = Array.from(this.rankStatBuffer.values());
     const oriCacheBufferToFlush = this.oriCacheBuffer;
     const whoAtBufferToFlush = this.whoAtBuffer;
     this.cmdStatBuffer.clear();
     this.msgStatBuffer.clear();
+    this.rankStatBuffer.clear();
     this.oriCacheBuffer = [];
     this.whoAtBuffer = [];
 
@@ -288,6 +310,17 @@ export class Collector {
           msgBufferToFlush.map(item => ({
             uid: item.uid,
             type: item.type,
+            count: $.add($.ifNull(row.count, 0), item.count),
+            timestamp: item.timestamp,
+          }))
+        );
+      }
+
+      // 写入发言排行数据
+      if (rankBufferToFlush.length > 0) {
+        await this.ctx.database.upsert('analyse_rank', (row) =>
+          rankBufferToFlush.map(item => ({
+            uid: item.uid,
             hour: item.hour,
             count: $.add($.ifNull(row.count, 0), item.count),
             timestamp: item.timestamp,

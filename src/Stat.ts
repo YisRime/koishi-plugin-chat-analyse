@@ -299,7 +299,7 @@ export class Stat {
       const uids = usersInGuild.map(u => u.uid);
       const userNameMap = new Map(usersInGuild.map(u => [u.uid, u.userName]));
 
-      const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: uids }, hour: { $gte: since } })
+      const stats = await this.ctx.database.select('analyse_rank').where({ uid: { $in: uids }, hour: { $gte: since } })
         .groupBy('uid', { count: row => $.sum(row.count) }).orderBy('count', 'desc').limit(100).execute();
       if (stats.length === 0) return '暂无统计数据';
 
@@ -307,7 +307,7 @@ export class Stat {
       const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count]);
       return { list, total };
     } else {
-      const msgStats = await this.ctx.database.select('analyse_msg').where({ hour: { $gte: since } }).project(['uid', 'count']).execute();
+      const msgStats = await this.ctx.database.select('analyse_rank').where({ hour: { $gte: since } }).project(['uid', 'count']).execute();
       if (msgStats.length === 0) return '暂无统计数据';
       const allUsers = await this.ctx.database.get('analyse_user', {}, ['uid', 'userId', 'userName']);
       const uidToUserMap = new Map(allUsers.map(u => [u.uid, { userId: u.userId, userName: u.userName }]));
