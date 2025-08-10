@@ -2,6 +2,7 @@ import { Context, Schema } from 'koishi';
 import { Collector } from './Collector';
 import { Stat } from './Stat';
 import { WhoAt } from './WhoAt';
+import { Data } from './Data';
 
 /**
  * @name 插件使用说明
@@ -34,6 +35,7 @@ export interface Config {
   enableRankStat: boolean;
   enableOriRecord: boolean;
   enableWhoAt: boolean;
+  enableData: boolean;
   atRetentionDays: number;
   rankRetentionDays: number;
 }
@@ -50,7 +52,8 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
-  }).description('统计配置'),
+    enableData: Schema.boolean().default(false).description('启用数据管理'),
+  }).description('功能配置'),
   Schema.object({
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
     rankRetentionDays: Schema.number().min(0).default(31).description('记录保留天数'),
@@ -69,8 +72,12 @@ export const Config: Schema<Config> = Schema.intersect([
  */
 export function apply(ctx: Context, config: Config) {
   if (config.enableListener) new Collector(ctx, config);
-  // 注册统计查询命令
+  // 注册主命令
   const analyse = ctx.command('analyse', '聊天记录分析');
+  // 注册统计查询子命令
   new Stat(ctx, config).registerCommands(analyse);
+  // 注册 @ 记录子命令
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
+  // 注册数据管理子命令
+  if (config.enableData) new Data(ctx).registerCommands(analyse);
 }
