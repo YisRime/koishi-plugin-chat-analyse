@@ -12,14 +12,6 @@ export class WhoAt {
    * @param config - 插件的配置对象。
    */
   constructor(private ctx: Context, private config: Config) {
-    this.setupCleanupTask();
-  }
-
-  /**
-   * @private @method setupCleanupTask
-   * @description 设置定时任务，根据配置定期清理过期的 @ 记录。
-   */
-  private setupCleanupTask() {
     if (this.config.atRetentionDays > 0) {
       this.ctx.cron('0 0 * * *', async () => {
         const cutoffDate = new Date(Date.now() - this.config.atRetentionDays * Time.day);

@@ -42,7 +42,13 @@ export class Collector {
    * @param config - 插件的配置对象。
    */
   constructor(private ctx: Context, private config: Config) {
-    this.defineModels();
+    this.ctx.model.extend('analyse_user', { uid: 'unsigned', channelId: 'string', userId: 'string', channelName: 'string', userName: 'string' }, { primary: 'uid', autoInc: true, indexes: ['channelId', 'userId'] });
+    this.ctx.model.extend('analyse_cmd', { uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'command'] });
+    this.ctx.model.extend('analyse_msg', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'type'] });
+    this.ctx.model.extend('analyse_rank', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'timestamp', 'type'] });
+    if (this.config.enableOriRecord) this.ctx.model.extend('analyse_cache', { id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
+    if (this.config.enableWhoAt) this.ctx.model.extend('analyse_at', { id: 'unsigned', uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['target', 'uid'] });
+
     ctx.on('message', (session) => this.onMessage(session));
     this.flushInterval = setInterval(() => this.flushBuffers(), Collector.FLUSH_INTERVAL);
     ctx.on('dispose', () => {
@@ -52,28 +58,53 @@ export class Collector {
   }
 
   /**
-   * @private @method defineModels
-   * @description 注册插件所需的所有数据表模型。
-   */
-  private defineModels() {
-    this.ctx.model.extend('analyse_user', { uid: 'unsigned', channelId: 'string', userId: 'string', channelName: 'string', userName: 'string' }, { primary: 'uid', autoInc: true, indexes: ['channelId', 'userId'] });
-    this.ctx.model.extend('analyse_cmd', { uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'command'] });
-    this.ctx.model.extend('analyse_msg', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'type'] });
-    this.ctx.model.extend('analyse_rank', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'timestamp', 'type'] });
-    if (this.config.enableOriRecord) this.ctx.model.extend('analyse_cache', { id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
-    if (this.config.enableWhoAt) this.ctx.model.extend('analyse_at', { id: 'unsigned', uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['target', 'uid'] });
-  }
-
-  /**
    * @private @method onMessage
    * @description 统一的消息事件处理器，解析消息并更新各类统计数据的缓冲区。
    * @param session - Koishi 的会话对象。
    */
   private async onMessage(session: Session) {
-    const { userId, channelId, content, timestamp, argv, elements } = session;
+    const { userId, channelId, content, timestamp, argv, elements, bot } = session;
     if (!channelId || !userId || !content?.trim()) return;
 
-    const user = await this.getOrCreateCachedUser(session);
+    const cacheKey = `${channelId}:${userId}`;
+    let user: UserCache | null;
+
+    if (this.userCache.has(cacheKey)) {
+      user = this.userCache.get(cacheKey)!;
+    } else if (this.pendingUserRequests.has(cacheKey)) {
+      user = await this.pendingUserRequests.get(cacheKey)!;
+    } else {
+      const promise = (async (): Promise<UserCache | null> => {
+        try {
+          const [dbUser] = await this.ctx.database.get('analyse_user', { channelId, userId });
+          const currentUserName = session.username ?? '';
+          const guild = await bot.getGuild(channelId).catch(() => null);
+          const currentChannelName = guild?.name ?? '';
+
+          if (dbUser) {
+            if ((currentUserName && dbUser.userName !== currentUserName) || (currentChannelName && dbUser.channelName !== currentChannelName)) {
+              await this.ctx.database.set('analyse_user', { uid: dbUser.uid }, { userName: currentUserName, channelName: currentChannelName });
+              dbUser.userName = currentUserName;
+              dbUser.channelName = currentChannelName;
+            }
+            this.userCache.set(cacheKey, dbUser);
+            return dbUser;
+          }
+
+          const createdUser = await this.ctx.database.create('analyse_user', { channelId, userId, userName: currentUserName, channelName: currentChannelName });
+          this.userCache.set(cacheKey, createdUser);
+          return createdUser;
+        } catch (error) {
+          this.ctx.logger.error(`创建或获取用户(${cacheKey})失败:`, error);
+          return null;
+        } finally {
+          this.pendingUserRequests.delete(cacheKey);
+        }
+      })();
+      this.pendingUserRequests.set(cacheKey, promise);
+      user = await promise;
+    }
+
     if (!user) return;
     const { uid } = user;
     const messageTime = new Date(timestamp);
@@ -119,51 +150,6 @@ export class Collector {
       this.oriCacheBuffer.push({ uid, content: this.sanitizeContent(elements), timestamp: messageTime });
       if (this.oriCacheBuffer.length >= Collector.BUFFER_THRESHOLD) await this.flushBuffers();
     }
-  }
-
-  /**
-   * @private @method getOrCreateCachedUser
-   * @description 高效获取或创建用户的缓存记录，利用内存缓存和请求锁机制防止重复查询。
-   * @param session - Koishi 会话对象。
-   * @returns 返回用户的缓存对象，失败则返回 `null`。
-   */
-  private getOrCreateCachedUser(session: Session): Promise<UserCache | null> {
-    const { userId, channelId, bot } = session;
-    const cacheKey = `${channelId}:${userId}`;
-
-    if (this.userCache.has(cacheKey)) return Promise.resolve(this.userCache.get(cacheKey));
-    if (this.pendingUserRequests.has(cacheKey)) return this.pendingUserRequests.get(cacheKey);
-
-    const promise = (async (): Promise<UserCache | null> => {
-      try {
-        const [dbUser] = await this.ctx.database.get('analyse_user', { channelId, userId });
-        const currentUserName = session.username ?? '';
-        const guild = await bot.getGuild(channelId).catch(() => null);
-        const currentChannelName = guild?.name ?? '';
-
-        if (dbUser) {
-          if ((currentUserName && dbUser.userName !== currentUserName) || (currentChannelName && dbUser.channelName !== currentChannelName)) {
-            await this.ctx.database.set('analyse_user', { uid: dbUser.uid }, { userName: currentUserName, channelName: currentChannelName });
-            dbUser.userName = currentUserName;
-            dbUser.channelName = currentChannelName;
-          }
-          this.userCache.set(cacheKey, dbUser);
-          return dbUser;
-        }
-
-        const createdUser = await this.ctx.database.create('analyse_user', { channelId, userId, userName: currentUserName, channelName: currentChannelName });
-        this.userCache.set(cacheKey, createdUser);
-        return createdUser;
-      } catch (error) {
-        this.ctx.logger.error(`创建或获取用户(${cacheKey})失败:`, error);
-        return null;
-      } finally {
-        this.pendingUserRequests.delete(cacheKey);
-      }
-    })();
-
-    this.pendingUserRequests.set(cacheKey, promise);
-    return promise;
   }
 
   /**
