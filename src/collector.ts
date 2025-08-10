@@ -25,7 +25,7 @@ declare module 'koishi' {
     };
     analyse_rank: {
       uid: number;
-      hour: Date;
+      type: string;
       count: number;
       timestamp: Date;
     };
@@ -64,7 +64,7 @@ export class Collector {
 
   // 统一的缓冲区
   private msgStatBuffer = new Map<string, { uid: number; type: string; count: number; timestamp: Date }>();
-  private rankStatBuffer = new Map<string, { uid: number; hour: Date; count: number; timestamp: Date }>();
+  private rankStatBuffer = new Map<string, { uid: number; timestamp: Date; type: string; count: number }>();
   private cmdStatBuffer = new Map<string, { uid: number; command: string; count: number; timestamp: Date }>();
   private oriCacheBuffer: Omit<Tables['analyse_cache'], 'id'>[] = [];
   private whoAtBuffer: Omit<Tables['analyse_at'], 'id'>[] = [];
@@ -105,8 +105,8 @@ export class Collector {
       uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp',
     }, { primary: ['uid', 'type'] });
     this.ctx.model.extend('analyse_rank', {
-      uid: 'unsigned', hour: 'timestamp', count: 'unsigned', timestamp: 'timestamp',
-    }, { primary: ['uid', 'hour'] });
+      uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp',
+    }, { primary: ['uid', 'timestamp', 'type'] });
     if (this.config.enableOriRecord) {
       this.ctx.model.extend('analyse_cache', {
         id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp',
@@ -152,34 +152,35 @@ export class Collector {
 
       const hourStart = new Date(messageTime.getFullYear(), messageTime.getMonth(), messageTime.getDate(), messageTime.getHours());
 
-      // 聚合发言排行统计到缓冲区
-      const rankKey = `${uid}:${hourStart.toISOString()}`;
-      const existingRank = this.rankStatBuffer.get(rankKey);
-      if (existingRank) {
-        existingRank.count++;
-        existingRank.timestamp = messageTime;
-      } else {
-        this.rankStatBuffer.set(rankKey, { uid, hour: hourStart, count: 1, timestamp: messageTime });
-      }
-
-      // 聚合消息类型统计到缓冲区
+      // 聚合消息类型和发言排行统计到缓冲区
       const uniqueElementTypes = new Set(elements.map(e => e.type));
       for (const type of uniqueElementTypes) {
-        const key = `${uid}:${type}`;
-        const existing = this.msgStatBuffer.get(key);
-        if (existing) {
-          existing.count++;
-          existing.timestamp = messageTime;
+        // 消息类型统计
+        const msgKey = `${uid}:${type}`;
+        const existingMsg = this.msgStatBuffer.get(msgKey);
+        if (existingMsg) {
+          existingMsg.count++;
+          existingMsg.timestamp = messageTime;
         } else {
-          this.msgStatBuffer.set(key, { uid, type, count: 1, timestamp: messageTime });
+          this.msgStatBuffer.set(msgKey, { uid, type, count: 1, timestamp: messageTime });
+        }
+
+        // 发言排行统计
+        const rankKey = `${uid}:${hourStart.toISOString()}:${type}`;
+        const existingRank = this.rankStatBuffer.get(rankKey);
+        if (existingRank) {
+          existingRank.count++;
+        } else {
+          this.rankStatBuffer.set(rankKey, { uid, timestamp: hourStart, type, count: 1 });
         }
       }
 
-      // 聚合“谁@我”到缓冲区
+      // 聚合 @ 记录到缓冲区
       if (this.config.enableWhoAt) {
         const atElements = elements.filter(e => e.type === 'at');
         if (atElements.length > 0) {
-          const sanitizedContent = this.sanitizeContent(elements);
+          const contentElements = elements.filter(e => e.type !== 'at');
+          const sanitizedContent = this.sanitizeContent(contentElements);
           for (const atElement of atElements) {
             const targetId = atElement.attrs.id;
             if (targetId && targetId !== userId) this.whoAtBuffer.push({ uid, target: targetId, content: sanitizedContent, timestamp: messageTime });
@@ -322,9 +323,9 @@ export class Collector {
         await this.ctx.database.upsert('analyse_rank', (row) =>
           rankBufferToFlush.map(item => ({
             uid: item.uid,
-            hour: item.hour,
-            count: $.add($.ifNull(row.count, 0), item.count),
             timestamp: item.timestamp,
+            type: item.type,
+            count: $.add($.ifNull(row.count, 0), item.count),
           }))
         );
       }

@@ -34,7 +34,7 @@ export class Stat {
       this.ctx.cron('0 0 * * *', async () => {
         try {
           const cutoffDate = new Date(Date.now() - this.config.rankRetentionDays * Time.day);
-          await this.ctx.database.remove('analyse_rank', { hour: { $lt: cutoffDate } });
+          await this.ctx.database.remove('analyse_rank', { timestamp: { $lt: cutoffDate } });
         } catch (error) {
           this.ctx.logger.error('清理发言排行历史记录出错:', error);
         }
@@ -108,21 +108,22 @@ export class Stat {
     if (this.config.enableRankStat) {
       analyse.subcommand('.rank', '用户发言排行')
         .option('guild', '-g <guildId:string> 指定群组')
-        .option('all', '-a 展示全局统计')
+        .option('type', '-t <type:string> 指定类型')
         .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
+        .option('all', '-a 展示全局统计')
         .action(async ({ session, options }) => {
           const guildId = options.all ? undefined : (options.guild || session.guildId);
           if (!guildId && !options.all) return '请提供查询范围';
 
           try {
-            const stats = await this.getActiveUserStats(options.hours, guildId);
+            const stats = await this.getActiveUserStats(options.hours, guildId, options.type);
             if (typeof stats === 'string') return stats;
 
             const listWithPercentage = stats.list.map(row => [
               ...row,
               stats.total > 0 ? `${((row[1] as number) / stats.total * 100).toFixed(2)}%` : '0.00%',
             ]);
-            const title = await this.generateTitle(guildId, undefined, { main: '排行', timeRange: options.hours });
+            const title = await this.generateTitle(guildId, undefined, { main: '排行', timeRange: options.hours, subtype: options.type });
             const renderData = { title, time: new Date(), total: stats.total, list: listWithPercentage };
             const result = await this.renderer.renderList(renderData, ['用户', '总计发言', '占比']);
             return Buffer.isBuffer(result) ? Element.image(result, 'image/png') : result;
@@ -211,8 +212,11 @@ export class Stat {
       scopeText = guild[0]?.channelName || guildId;
     }
 
-    if (options.main === '排行') return `${scopeText}${options.timeRange}小时消息排行`;
-    if (options.main === '消息' && options.subtype) return `${scopeText}"${options.subtype}"消息统计`;
+    if (options.main === '排行') {
+      const typeText = options.subtype ? `“${options.subtype}”` : '';
+      return `${scopeText}${options.timeRange}小时${typeText}消息排行`;
+    }
+    if (options.main === '消息' && options.subtype) return `${scopeText}“${options.subtype}”消息统计`;
     return `${scopeText}${options.main}统计`;
   }
 
@@ -308,10 +312,13 @@ export class Stat {
    * @description 从数据库中获取并聚合指定时间范围内的活跃用户排行数据。
    * @param {number} hours - 查询过去的小时数。
    * @param {string} [guildId] - (可选) 要查询的群组 ID。若不提供，则进行全局排行。
+   * @param {string} [type] - (可选) 要筛选的消息类型。
    * @returns {Promise<{ list: RenderListItem[], total: number } | string>} 返回一个包含列表和总数的对象，或在无数据时返回提示字符串。
    */
-  private async getActiveUserStats(hours: number, guildId?: string): Promise<{ list: RenderListItem[], total: number } | string> {
+  private async getActiveUserStats(hours: number, guildId?: string, type?: string): Promise<{ list: RenderListItem[], total: number } | string> {
     const since = new Date(Date.now() - hours * 3600 * 1000);
+    const baseQuery: any = { timestamp: { $gte: since } };
+    if (type) baseQuery.type = type;
 
     if (guildId) {
       const usersInGuild = await this.ctx.database.get('analyse_user', { channelId: guildId }, ['uid', 'userName']);
@@ -319,7 +326,8 @@ export class Stat {
       const uids = usersInGuild.map(u => u.uid);
       const userNameMap = new Map(usersInGuild.map(u => [u.uid, u.userName]));
 
-      const stats = await this.ctx.database.select('analyse_rank').where({ uid: { $in: uids }, hour: { $gte: since } })
+      const query = { ...baseQuery, uid: { $in: uids } };
+      const stats = await this.ctx.database.select('analyse_rank').where(query)
         .groupBy('uid', { count: row => $.sum(row.count) }).orderBy('count', 'desc').limit(100).execute();
       if (stats.length === 0) return '暂无统计数据';
 
@@ -327,7 +335,7 @@ export class Stat {
       const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count]);
       return { list, total };
     } else {
-      const msgStats = await this.ctx.database.select('analyse_rank').where({ hour: { $gte: since } }).project(['uid', 'count']).execute();
+      const msgStats = await this.ctx.database.select('analyse_rank').where(baseQuery).project(['uid', 'count']).execute();
       if (msgStats.length === 0) return '暂无统计数据';
       const allUsers = await this.ctx.database.get('analyse_user', {}, ['uid', 'userId', 'userName']);
       const uidToUserMap = new Map(allUsers.map(u => [u.uid, { userId: u.userId, userName: u.userName }]));
