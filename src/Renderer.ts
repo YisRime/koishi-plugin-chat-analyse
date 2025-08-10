@@ -53,13 +53,13 @@ export class Renderer {
             <style>
               :root {
                 --card-bg: #ffffff; --text-color: #111827; --header-color: #111827;
-                --sub-text-color: #6b7280; --border-color: #e5e7eb; --accent-color: #3b82f6;
+                --sub-text-color: #6b7280; --border-color: #e5e7eb; --accent-color: #4a6ee0;
                 --chip-bg: #f3f4f6; --stripe-bg: #f9fafb; --gold: #f59e0b; --silver: #9ca3af; --bronze: #a16207;
               }
               body {
                 display: inline-block; /* Crucial for shrink-wrapping */
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                background: transparent; margin: 0; padding: 10px;
+                background: transparent; margin: 0; padding: 8px;
                 -webkit-font-smoothing: antialiased;
               }
               .container {
@@ -67,22 +67,22 @@ export class Renderer {
                 border-radius: 12px; padding: 0; overflow: hidden;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.05);
               }
-              .header { padding: 12px 16px; }
-              .header-table { border-collapse: collapse; table-layout: auto; width: 100%; }
+              .header { padding: 10px 14px; }
+              .header-table { border-collapse: collapse; width: 100%; }
               .header-table-left, .header-table-right { width: 1%; white-space: nowrap; }
               .header-table-left { text-align: left; }
               .header-table-center { text-align: center; }
               .header-table-right { text-align: right; }
               .title-text { font-size: 18px; font-weight: 600; color: var(--header-color); margin: 0; }
               .stat-chip, .time-label {
-                display: inline-flex; align-items: baseline; padding: 5px 10px; border-radius: 8px;
+                display: inline-flex; align-items: baseline; padding: 4px 8px; border-radius: 8px;
                 background: var(--chip-bg); font-size: 13px; color: var(--sub-text-color);
               }
               .stat-chip span { font-weight: 600; color: var(--text-color); margin-left: 4px; }
               .table-container { border-top: 1px solid var(--border-color); }
-              .main-table { border-collapse: collapse; table-layout: auto; width: 100%; }
+              .main-table { border-collapse: collapse; width: 100%; }
               .main-table th, .main-table td {
-                padding: 10px 16px;
+                padding: 8px 14px;
                 vertical-align: middle;
               }
               .main-table th {
@@ -91,10 +91,7 @@ export class Renderer {
               }
               .main-table td { font-size: 14px; color: var(--text-color); }
               .main-table tbody tr:nth-child(even) { background-color: var(--stripe-bg); }
-              .main-table .name-cell, .main-table .name-header {
-                text-align: left;
-                white-space: normal;
-              }
+              .main-table .name-cell, .main-table .name-header { text-align: left; }
               .main-table .rank-cell, .main-table .count-cell, .main-table .date-cell, .main-table .percent-cell, .main-table .header-right-align {
                 text-align: right;
                 white-space: nowrap;
@@ -110,7 +107,7 @@ export class Renderer {
               .rank-silver { color: var(--silver) !important; }
               .rank-bronze { color: var(--bronze) !important; }
               .percent-cell { position: relative; }
-              .percent-bar { position: absolute; top: 0; left: 0; height: 100%; background-color: var(--accent-color); opacity: 0.1; }
+              .percent-bar { position: absolute; top: 0; right: 0; height: 100%; background-color: var(--accent-color); opacity: 0.15; }
               .percent-text { position: relative; z-index: 1; }
             </style>
           </head>
@@ -130,7 +127,6 @@ export class Renderer {
       return await page.screenshot({ type: 'png', fullPage: true, omitBackground: true });
     } catch (error) {
       this.ctx.logger.error('图片渲染出错:', error);
-      throw new Error(`图片渲染出错: ${error.message || '未知错误'}`);
     } finally {
       if (page) await page.close().catch(() => {});
     }
@@ -149,23 +145,24 @@ export class Renderer {
     const diff = Date.now() - date.getTime();
     if (diff < Time.minute) return '刚刚';
     if (diff > 365 * Time.day) {
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
     }
-    const timeUnits: { unit: string; ms: number }[] = [
-        { unit: '月', ms: 30 * Time.day }, { unit: '天', ms: Time.day },
-        { unit: '时', ms: Time.hour }, { unit: '分', ms: Time.minute },
+
+    const timeUnits: [string, number][] = [
+      ['月', 30 * Time.day], ['天', Time.day],
+      ['时', Time.hour], ['分', Time.minute],
     ];
     let remainingDiff = diff;
     const parts: string[] = [];
-    for (const { unit, ms } of timeUnits) {
-        if (remainingDiff >= ms) {
-            const value = Math.floor(remainingDiff / ms);
-            parts.push(`${value}${unit}`);
-            remainingDiff %= ms;
-        }
+    for (const [unit, ms] of timeUnits) {
+      if (remainingDiff >= ms) {
+        const value = Math.floor(remainingDiff / ms);
+        parts.push(`${value}${unit}`);
+        remainingDiff %= ms;
+      }
     }
     const result = parts.slice(0, 2).join('');
-    return result ? `${result}前` : '刚刚';
+    return `${result}前`;
   }
 
   /**

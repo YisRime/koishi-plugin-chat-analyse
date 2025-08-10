@@ -3,7 +3,7 @@ import { Renderer, RenderListItem } from './Renderer';
 import { Config } from './index';
 
 // 定义内部类型，用于统一处理命令选项
-type QueryScopeOptions = { user?: boolean | string; guild?: boolean | string; all?: boolean };
+type QueryScopeOptions = { user?: string; guild?: string; all?: boolean };
 type QueryScopeResult = { userId?: string; guildId?: string; error?: string };
 
 /**
@@ -31,8 +31,8 @@ export class Stat {
   public registerCommands(analyse: Command) {
     if (this.config.enableCmdStat) {
       analyse.subcommand('.cmd', '命令使用统计')
-        .option('user', '-u [user:user] 指定用户')
-        .option('guild', '-g [guildId:string] 指定群组')
+        .option('user', '-u <user:string> 指定用户')
+        .option('guild', '-g <guildId:string> 指定群组')
         .option('all', '-a 展示全局统计')
         .action(async ({ session, options }) => {
           const scope = this.parseQueryScope(session, options);
@@ -55,8 +55,8 @@ export class Stat {
 
     if (this.config.enableMsgStat) {
       analyse.subcommand('.msg', '消息发送统计')
-        .option('user', '-u [user:user] 指定用户')
-        .option('guild', '-g [guildId:string] 指定群组')
+        .option('user', '-u <user:string> 指定用户')
+        .option('guild', '-g <guildId:string> 指定群组')
         .option('type', '-t <type:string> 指定类型')
         .option('all', '-a 展示全局统计')
         .action(async ({ session, options }) => {
@@ -87,12 +87,11 @@ export class Stat {
 
     if (this.config.enableRankStat) {
       analyse.subcommand('.rank', '用户发言排行')
-        .option('guild', '-g [guildId:string] 指定群组')
+        .option('guild', '-g <guildId:string> 指定群组')
         .option('all', '-a 展示全局统计')
         .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
         .action(async ({ session, options }) => {
-          let guildId = options.all ? undefined : (typeof options.guild === 'string' ? options.guild : session.guildId);
-          if (!session.guildId) return '请指定群组 ID';
+          const guildId = options.all ? undefined : (options.guild || session.guildId);
           if (!guildId && !options.all) return '请提供查询范围';
 
           try {
@@ -125,17 +124,24 @@ export class Stat {
    */
   private parseQueryScope(session: Session, options: QueryScopeOptions): QueryScopeResult {
     let userId: string, guildId: string;
-    if (typeof options.user === 'string') userId = h.select(options.user, 'user')[0]?.attrs.id;
-    else if (options.user) userId = session.userId;
 
-    if (typeof options.guild === 'string') guildId = options.guild;
-    else if (options.guild) {
-      if (!session.guildId) return { error: '请指定群组 ID' };
-      guildId = session.guildId;
+    if (options.user) {
+      const atElements = h.select(options.user, 'at');
+      if (atElements.length > 0) {
+        userId = atElements[0].attrs.id;
+      } else {
+        userId = options.user.trim();
+      }
     }
 
+    if (options.guild) guildId = options.guild;
     if (options.all) return { userId, guildId: undefined };
-    if (!guildId && !userId) return session.guildId ? { guildId: session.guildId } : { error: '请提供查询范围' };
+
+    if (!userId && !guildId) {
+      if (session.guildId) return { guildId: session.guildId };
+      return { error: '请提供查询范围' };
+    }
+
     return { userId, guildId };
   }
 
@@ -185,9 +191,9 @@ export class Stat {
       scopeText = guild[0]?.channelName || guildId;
     }
 
-    if (options.main === '排行') return `${scopeText}的${options.timeRange}小时消息排行`;
-    if (options.main === '消息' && options.subtype) return `${scopeText}的"${options.subtype}"消息统计`;
-    return `${scopeText}的${options.main}统计`;
+    if (options.main === '排行') return `${scopeText}${options.timeRange}小时消息排行`;
+    if (options.main === '消息' && options.subtype) return `${scopeText}"${options.subtype}"消息统计`;
+    return `${scopeText}${options.main}统计`;
   }
 
   /**
