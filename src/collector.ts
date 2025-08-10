@@ -14,7 +14,7 @@ declare module 'koishi' {
 }
 
 /** @interface UserCache - 定义用户缓存对象的结构。 */
-interface UserCache { uid: number; userName: string; channelName: string; }
+interface UserCache { uid: number; userName: string; }
 
 /**
  * @class Collector
@@ -24,7 +24,7 @@ export class Collector {
   /** @property FLUSH_INTERVAL - 内存缓存区定时刷入数据库的间隔（毫秒）。 */
   private static readonly FLUSH_INTERVAL = Time.minute;
   /** @property BUFFER_THRESHOLD - 内存缓存区触发刷新的消息数量阈值。 */
-  private static readonly BUFFER_THRESHOLD = 100;
+  private static readonly BUFFER_THRESHOLD = 60;
 
   // 统一的数据缓冲区
   private msgStatBuffer = new Map<string, { uid: number; type: string; count: number; timestamp: Date }>();
@@ -34,7 +34,8 @@ export class Collector {
   private whoAtBuffer: Omit<Tables['analyse_at'], 'id'>[] = [];
 
   private userCache = new Map<string, UserCache>();
-  private pendingUserRequests = new Map<string, Promise<UserCache | null>>();
+  private channelCache = new Map<string, string>();
+  private pendingRequests = new Map<string, Promise<UserCache | null>>();
   private flushInterval: NodeJS.Timeout;
 
   /**
@@ -71,15 +72,20 @@ export class Collector {
 
     if (this.userCache.has(cacheKey)) {
       user = this.userCache.get(cacheKey)!;
-    } else if (this.pendingUserRequests.has(cacheKey)) {
-      user = await this.pendingUserRequests.get(cacheKey)!;
+    } else if (this.pendingRequests.has(cacheKey)) {
+      user = await this.pendingRequests.get(cacheKey)!;
     } else {
       const promise = (async (): Promise<UserCache | null> => {
         try {
           const [dbUser] = await this.ctx.database.get('analyse_user', { channelId, userId });
           const currentUserName = session.username ?? '';
-          const guild = await bot.getGuild(channelId).catch(() => null);
-          const currentChannelName = guild?.name ?? '';
+
+          let currentChannelName = this.channelCache.get(channelId);
+          if (currentChannelName === undefined) {
+            const guild = await bot.getGuild(channelId).catch(() => null);
+            currentChannelName = guild?.name ?? '';
+            if (currentChannelName) this.channelCache.set(channelId, currentChannelName);
+          }
 
           if (dbUser) {
             if ((currentUserName && dbUser.userName !== currentUserName) || (currentChannelName && dbUser.channelName !== currentChannelName)) {
@@ -87,21 +93,23 @@ export class Collector {
               dbUser.userName = currentUserName;
               dbUser.channelName = currentChannelName;
             }
-            this.userCache.set(cacheKey, dbUser);
-            return dbUser;
+            const cacheData: UserCache = { uid: dbUser.uid, userName: dbUser.userName };
+            this.userCache.set(cacheKey, cacheData);
+            return cacheData;
           }
 
           const createdUser = await this.ctx.database.create('analyse_user', { channelId, userId, userName: currentUserName, channelName: currentChannelName });
-          this.userCache.set(cacheKey, createdUser);
-          return createdUser;
+          const cacheData: UserCache = { uid: createdUser.uid, userName: createdUser.userName };
+          this.userCache.set(cacheKey, cacheData);
+          return cacheData;
         } catch (error) {
           this.ctx.logger.error(`创建或获取用户(${cacheKey})失败:`, error);
           return null;
         } finally {
-          this.pendingUserRequests.delete(cacheKey);
+          this.pendingRequests.delete(cacheKey);
         }
       })();
-      this.pendingUserRequests.set(cacheKey, promise);
+      this.pendingRequests.set(cacheKey, promise);
       user = await promise;
     }
 
