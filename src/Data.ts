@@ -168,7 +168,7 @@ export class Data {
       .action(async () => {
         const [allChannelInfo, commands] = await Promise.all([
           this.ctx.database.get('analyse_user', {}, ['channelId', 'channelName']),
-          (this.ctx.database.select('analyse_cmd') as any).distinct('command').execute()
+          (this.ctx.database.select('analyse_cmd')).groupBy('command').execute()
         ]);
 
         const uniqueChannels = [...new Map(allChannelInfo.map(item => [item.channelId, item])).values()];
