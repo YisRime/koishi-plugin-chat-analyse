@@ -38,18 +38,20 @@ export class Analyse {
 
   public registerCommands(cmd: Command) {
     if (this.config.enableWordCloud) {
-      cmd.subcommand('.wordcloud', '生成词云', { checkArgCount: false })
+      cmd.subcommand('.wordcloud', '生成词云')
         .usage('基于指定范围内的聊天记录生成词云图。')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('user', '-u <user:string> 指定用户')
         .option('all', '-a 全局')
+        .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
         .action(async ({ session, options }) => {
           if (!this.isNlpReady) return '文本分析尚未就绪，请稍后再试';
 
           const scope = await parseQueryScope(this.ctx, session, options);
           if (scope.error) return scope.error;
 
-          const records = await this.ctx.database.select('analyse_cache').where({ uid: { $in: scope.uids } }).project(['content']).execute();
+          const since = new Date(Date.now() - options.hours * Time.hour);
+          const records = await this.ctx.database.select('analyse_cache').where({ uid: { $in: scope.uids }, timestamp: { $gte: since } }).project(['content']).execute();
           if (records.length === 0) return '暂无统计数据';
 
           const allText = records.map(r => r.content).join(' ');
@@ -78,10 +80,11 @@ export class Analyse {
     }
 
     if (this.config.enableVocabulary) {
-      cmd.subcommand('.vocabulary', '词汇排行', { checkArgCount: false })
+      cmd.subcommand('.vocabulary', '词汇排行')
         .usage('根据不重复词汇量占总词汇量的比例进行排行。')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('all', '-a 全局')
+        .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
         .action(async ({ session, options }) => {
           if (!this.isNlpReady) return '文本分析尚未就绪，请稍后再试';
 
@@ -91,7 +94,8 @@ export class Analyse {
           const users = await this.ctx.database.get('analyse_user', { uid: { $in: scope.uids } }, ['uid', 'userName']);
           const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
 
-          const allRecords = await this.ctx.database.get('analyse_cache', { uid: { $in: scope.uids } }, ['uid', 'content']);
+          const since = new Date(Date.now() - options.hours * Time.hour);
+          const allRecords = await this.ctx.database.get('analyse_cache', { uid: { $in: scope.uids }, timestamp: { $gte: since } }, ['uid', 'content']);
           if (allRecords.length === 0) return '暂无统计数据';
 
           const messagesByUid = new Map<number, string[]>();
