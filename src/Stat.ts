@@ -20,8 +20,8 @@ export class Stat {
    */
   constructor(private ctx: Context, private config: Config) {
     this.renderer = new Renderer(ctx);
-    // Inlined setupCleanupTask
-    if (this.config.rankRetentionDays > 0) {
+    // 仅在启用发言排行且设置了保留天数时，才设置定时清理任务
+    if (this.config.enableRankStat && this.config.rankRetentionDays > 0) {
       this.ctx.cron('0 0 * * *', async () => {
         const cutoffDate = new Date(Date.now() - this.config.rankRetentionDays * Time.day);
         await this.ctx.database.remove('analyse_rank', { timestamp: { $lt: cutoffDate } })
@@ -32,10 +32,10 @@ export class Stat {
 
   /**
    * @public @method registerCommands
-   * @description 根据配置，动态地将子命令注册到主 `analyse` 命令下。
-   * @param analyse - 主 `analyse` 命令实例。
+   * @description 根据配置，动态地将子命令注册到主命令下。
+   * @param cmd - 主命令实例。
    */
-  public registerCommands(analyse: Command) {
+  public registerCommands(cmd: Command) {
     const createHandler = (handler: (scope: QueryScopeResult, options: any) => Promise<string | Buffer[]>) => {
       return async ({ session, options }) => {
         const scope = await this.parseQueryScope(session, options);
@@ -56,7 +56,7 @@ export class Stat {
       };
     };
 
-    if (this.config.enableCmdStat) analyse.subcommand('.cmd', '命令使用统计')
+    if (this.config.enableCmdStat) cmd.subcommand('.cmd', '命令使用统计')
       .option('user', '-u <user:string> 指定用户')
       .option('guild', '-g <guildId:string> 指定群组')
       .option('all', '-a 全局')
@@ -69,7 +69,7 @@ export class Stat {
         return this.renderer.renderList({ title, time: new Date(), total, list }, ['命令', '次数', '最后使用']);
       }));
 
-    if (this.config.enableMsgStat) analyse.subcommand('.msg', '消息发送统计')
+    if (this.config.enableMsgStat) cmd.subcommand('.msg', '消息发送统计')
       .option('user', '-u <user:string> 指定用户')
       .option('guild', '-g <guildId:string> 指定群组')
       .option('type', '-t <type:string> 指定类型')
@@ -99,7 +99,7 @@ export class Stat {
         }
       }));
 
-    if (this.config.enableRankStat) analyse.subcommand('.rank', '用户发言排行')
+    if (this.config.enableRankStat) cmd.subcommand('.rank', '用户发言排行')
       .option('guild', '-g <guildId:string> 指定群组')
       .option('type', '-t <type:string> 指定类型')
       .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
@@ -143,7 +143,7 @@ export class Stat {
         }
       });
 
-    if (this.config.enableActivityStat) analyse.subcommand('.activity', '用户活跃分析')
+    if (this.config.enableActivityStat) cmd.subcommand('.activity', '用户活跃分析')
       .option('user', '-u <user:string> 指定用户')
       .option('guild', '-g <guildId:string> 指定群组')
       .option('all', '-a 全局')

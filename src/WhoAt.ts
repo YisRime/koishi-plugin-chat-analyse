@@ -12,7 +12,8 @@ export class WhoAt {
    * @param config - 插件的配置对象。
    */
   constructor(private ctx: Context, private config: Config) {
-    if (this.config.atRetentionDays > 0) {
+    // 仅在启用@记录且设置了保留天数时，才设置定时清理任务
+    if (this.config.enableWhoAt && this.config.atRetentionDays > 0) {
       this.ctx.cron('0 0 * * *', async () => {
         const cutoffDate = new Date(Date.now() - this.config.atRetentionDays * Time.day);
         await this.ctx.database.remove('analyse_at', { timestamp: { $lt: cutoffDate } })
@@ -23,11 +24,11 @@ export class WhoAt {
 
   /**
    * @public @method registerCommand
-   * @description 在主 `analyse` 命令下注册 `whoatme` 子命令。
-   * @param analyse - 主 `analyse` 命令实例。
+   * @description 在主命令下注册子命令。
+   * @param cmd - 主命令实例。
    */
-  public registerCommand(analyse: Command) {
-    analyse.subcommand('.whoatme', '谁@我')
+  public registerCommand(cmd: Command) {
+    cmd.subcommand('whoatme', '谁@我')
       .action(async ({ session }) => {
         if (!session.userId) return '无法获取用户信息';
 

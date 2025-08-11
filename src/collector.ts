@@ -43,12 +43,25 @@ export class Collector {
    * @param config - 插件的配置对象。
    */
   constructor(private ctx: Context, private config: Config) {
+    // 基础用户表，几乎所有功能都依赖它，只要监听器开启就注册
     this.ctx.model.extend('analyse_user', { uid: 'unsigned', channelId: 'string', userId: 'string', channelName: 'string', userName: 'string' }, { primary: 'uid', autoInc: true, indexes: ['channelId', 'userId'] });
-    this.ctx.model.extend('analyse_cmd', { uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'command'] });
-    this.ctx.model.extend('analyse_msg', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'type'] });
-    this.ctx.model.extend('analyse_rank', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'timestamp', 'type'] });
-    if (this.config.enableOriRecord) this.ctx.model.extend('analyse_cache', { id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
-    if (this.config.enableWhoAt) this.ctx.model.extend('analyse_at', { id: 'unsigned', uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['target', 'uid'] });
+
+    // 根据配置注册其他数据表
+    if (config.enableCmdStat) {
+      this.ctx.model.extend('analyse_cmd', { uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'command'] });
+    }
+    if (config.enableMsgStat) {
+      this.ctx.model.extend('analyse_msg', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'type'] });
+    }
+    if (config.enableRankStat || config.enableActivityStat) {
+      this.ctx.model.extend('analyse_rank', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'timestamp', 'type'] });
+    }
+    if (this.config.enableOriRecord) {
+      this.ctx.model.extend('analyse_cache', { id: 'unsigned', uid: 'unsigned', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['uid', 'timestamp'] });
+    }
+    if (this.config.enableWhoAt) {
+      this.ctx.model.extend('analyse_at', { id: 'unsigned', uid: 'unsigned', target: 'string', content: 'text', timestamp: 'timestamp' }, { primary: 'id', autoInc: true, indexes: ['target', 'uid'] });
+    }
 
     ctx.on('message', (session) => this.onMessage(session));
     this.flushInterval = setInterval(() => this.flushBuffers(), Collector.FLUSH_INTERVAL);
@@ -118,7 +131,7 @@ export class Collector {
     const messageTime = new Date(timestamp);
 
     // 更新指令统计
-    if (argv?.command) {
+    if (this.config.enableCmdStat && argv?.command) {
       const key = `${uid}:${argv.command.name}`;
       const entry = this.cmdStatBuffer.get(key) ?? { uid, command: argv.command.name, count: 0, timestamp: messageTime };
       entry.count++;
@@ -130,16 +143,21 @@ export class Collector {
 
     // 更新消息类型和发言排行统计
     for (const type of new Set(elements.map(e => e.type))) {
-      const msgKey = `${uid}:${type}`;
-      const msgEntry = this.msgStatBuffer.get(msgKey) ?? { uid, type, count: 0, timestamp: messageTime };
-      msgEntry.count++;
-      msgEntry.timestamp = messageTime;
-      this.msgStatBuffer.set(msgKey, msgEntry);
-
-      const rankKey = `${uid}:${hourStart.toISOString()}:${type}`;
-      const rankEntry = this.rankStatBuffer.get(rankKey) ?? { uid, timestamp: hourStart, type, count: 0 };
-      rankEntry.count++;
-      this.rankStatBuffer.set(rankKey, rankEntry);
+      // 消息统计
+      if (this.config.enableMsgStat) {
+        const msgKey = `${uid}:${type}`;
+        const msgEntry = this.msgStatBuffer.get(msgKey) ?? { uid, type, count: 0, timestamp: messageTime };
+        msgEntry.count++;
+        msgEntry.timestamp = messageTime;
+        this.msgStatBuffer.set(msgKey, msgEntry);
+      }
+      // 发言排行
+      if (this.config.enableRankStat || this.config.enableActivityStat) {
+        const rankKey = `${uid}:${hourStart.toISOString()}:${type}`;
+        const rankEntry = this.rankStatBuffer.get(rankKey) ?? { uid, timestamp: hourStart, type, count: 0 };
+        rankEntry.count++;
+        this.rankStatBuffer.set(rankKey, rankEntry);
+      }
     }
 
     // 更新@记录

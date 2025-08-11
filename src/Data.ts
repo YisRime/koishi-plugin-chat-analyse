@@ -20,11 +20,11 @@ export class Data {
   /**
    * @public
    * @method registerCommands
-   * @description 在 `analyse` 命令下注册所有数据管理相关的子命令 (`.backup`, `.restore`, `.clear`, `.list`)。
-   * @param analyse - 主 `analyse` 命令实例。
+   * @description 在主命令下注册所有数据管理相关的子命令。
+   * @param cmd - 主命令实例。
    */
-  public registerCommands(analyse: Command) {
-    analyse.subcommand('.backup', '备份统计数据', { authority: 4 })
+  public registerCommands(cmd: Command) {
+    cmd.subcommand('.backup', '备份统计数据', { authority: 4 })
       .action(async () => {
         try {
           await fs.mkdir(this.dataDir, { recursive: true });
@@ -55,7 +55,7 @@ export class Data {
         }
       });
 
-    analyse.subcommand('.restore', '恢复统计数据', { authority: 4 })
+    cmd.subcommand('.restore', '恢复统计数据', { authority: 4 })
       .action(async () => {
         try {
           const userTablePath = path.join(this.dataDir, 'analyse_user.json');
@@ -86,7 +86,7 @@ export class Data {
         }
       });
 
-    analyse.subcommand('.clear', '清理统计数据', { authority: 4 })
+    cmd.subcommand('.clear', '清理统计数据', { authority: 4 })
       .option('table', '-t <table:string> 指定表名')
       .option('guild', '-g <guildId:string> 指定群组')
       .option('user', '-u <user:string> 指定用户')
@@ -131,7 +131,7 @@ export class Data {
         }
       });
 
-    analyse.subcommand('.list', '列出频道和命令', { authority: 4 })
+    cmd.subcommand('.list', '列出频道和命令', { authority: 4 })
       .action(async () => {
         const [allChannelInfo, commands] = await Promise.all([
           this.ctx.database.get('analyse_user', {}, ['channelId', 'channelName']),
