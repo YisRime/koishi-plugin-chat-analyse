@@ -19,6 +19,7 @@ export class Analyse {
     this.renderer = new Renderer(ctx);
 
     this.nlp = new Nlp({ languages: ['zh'], nlu: { log: false } });
+    this.nlp.settings.autoSave = false;
     this.nlp.container.register('extract-lang-zh', new LangZh());
 
     this.initializeNlp().catch(err => {
