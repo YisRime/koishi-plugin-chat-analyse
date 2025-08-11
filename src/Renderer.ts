@@ -6,7 +6,7 @@ export type RenderListItem = (string | number | Date)[];
 
 /**
  * @interface ListRenderData
- * @description 定义了调用 `renderList` 方法所需的数据结构，包含了渲染一张完整列表图片所必需的所有信息。
+ * @description 定义了调用 `renderList` 方法所需的数据结构。
  */
 export interface ListRenderData {
   title: string;
@@ -16,22 +16,50 @@ export interface ListRenderData {
 }
 
 /**
+ * @interface CircadianChartData
+ * @description 定义了调用 `renderCircadianChart` 方法所需的数据结构。
+ */
+export interface CircadianChartData {
+  title: string;
+  time: Date;
+  total: string | number;
+  data: number[];
+}
+
+/**
  * @class Renderer
- * @description 负责将结构化的列表数据渲染为设计精美的 PNG 图片。其核心特性是能够动态计算内容尺寸，生成布局紧凑、自适应的图片。
+ * @description 负责将结构化的列表数据渲染为设计精美的 PNG 图片。
  */
 export class Renderer {
   /**
-   * @param ctx - Koishi 的插件上下文，用于访问 `puppeteer` 等核心服务。
+   * @private @readonly
+   * @property COMMON_STYLE - 存储所有卡片共享的基础 CSS 样式。
    */
+  private readonly COMMON_STYLE = `:root{--card-bg:#fff;--text-color:#111827;--header-color:#111827;--sub-text-color:#6b7280;--border-color:#e5e7eb;--accent-color:#4a6ee0;--chip-bg:#f3f4f6;--stripe-bg:#f9fafb;--gold:#f59e0b;--silver:#9ca3af;--bronze:#a16207}body{display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:0 0;margin:0;padding:8px;-webkit-font-smoothing:antialiased}.container{display:inline-block;background:var(--card-bg);border-radius:12px;padding:0;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.05)}.header{padding:10px 14px}.header-table{border-collapse:collapse;width:100%}.header-table-left,.header-table-right{width:1%;white-space:nowrap}.header-table-left{text-align:left}.header-table-center{text-align:center}.header-table-right{text-align:right}.title-text{font-size:18px;font-weight:600;color:var(--header-color);margin:0}.stat-chip,.time-label{display:inline-flex;align-items:baseline;padding:4px 8px;border-radius:8px;background:var(--chip-bg);font-size:13px;color:var(--sub-text-color)}.stat-chip span{font-weight:600;color:var(--text-color);margin-left:4px}`;
+
   constructor(private ctx: Context) {}
 
   /**
    * @private
-   * @method htmlToImage
-   * @description 将一个完整的 HTML 文档字符串转换为 PNG 图片 Buffer。
-   * @param fullHtmlContent - 要渲染的、包含 `<html>...</html>` 的完整HTML字符串。
-   * @returns 返回一个包含 PNG 图片数据的 Buffer，失败则返回 null。
+   * @method generateFullHtml
+   * @description 将卡片内容和特定样式组合成一个完整的 HTML 文档。
+   * @param cardContent - 卡片部分的 HTML 字符串。
+   * @param specificStyles - 该卡片类型独有的 CSS 样式字符串。
+   * @returns 完整的 HTML 字符串。
    */
+  private generateFullHtml(cardContent: string, specificStyles: string): string {
+    return `<!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>${this.COMMON_STYLE}${specificStyles}</style>
+      </head>
+      <body>
+        ${cardContent}
+      </body>
+      </html>`;
+  }
+
   private async htmlToImage(fullHtmlContent: string): Promise<Buffer | null> {
     const page = await this.ctx.puppeteer.page();
     try {
@@ -48,13 +76,6 @@ export class Renderer {
     }
   }
 
-  /**
-   * @private
-   * @method formatDate
-   * @description 将 `Date` 对象格式化为易于理解的相对时间或绝对日期字符串。
-   * @param date - 需要格式化的日期对象。
-   * @returns 格式化后的时间字符串。
-   */
   private formatDate(date: Date): string {
     if (!date) return '未知';
     const diff = Date.now() - date.getTime();
@@ -63,21 +84,11 @@ export class Renderer {
 
     const timeUnits: [string, number][] = [['月', 30 * Time.day], ['天', Time.day], ['时', Time.hour], ['分', Time.minute]];
     for (const [unit, ms] of timeUnits) {
-      if (diff >= ms) {
-        return `${Math.floor(diff / ms)}${unit}前`;
-      }
+      if (diff >= ms) return `${Math.floor(diff / ms)}${unit}前`;
     }
     return '刚刚';
   }
 
-  /**
-   * @public
-   * @method renderList
-   * @description 构建并渲染一个包含标题、统计信息和数据表格的 HTML 卡片为图片。如果数据过多，则会分片渲染成多张图片。
-   * @param data - 包含渲染所需全部信息的对象。
-   * @param headers - (可选) 表格的表头字符串数组。
-   * @returns 成功时返回包含 PNG 图片的 Buffer 数组，若列表为空则返回提示字符串。
-   */
   public async renderList(data: ListRenderData, headers?: string[]): Promise<string | Buffer[]> {
     const { title, time, list } = data;
     if (!list?.length) return '暂无数据可供渲染';
@@ -102,6 +113,8 @@ export class Renderer {
 
     const totalPages = Math.ceil(totalItems / CHUNK_SIZE);
 
+    const listStyles = `.table-container{border-top:1px solid var(--border-color)}.main-table{border-collapse:collapse;width:100%}.main-table th,.main-table td{padding:8px 14px;vertical-align:middle}.main-table th{font-size:12px;font-weight:500;color:var(--sub-text-color);text-transform:uppercase;letter-spacing:.05em;background:var(--stripe-bg)}.main-table td{font-size:14px;color:var(--text-color)}.main-table tbody tr:nth-child(even){background-color:var(--stripe-bg)}.main-table .name-cell,.main-table .name-header{text-align:left}.main-table .rank-cell,.main-table .count-cell,.main-table .date-cell,.main-table .percent-cell,.main-table .header-right-align{text-align:right;white-space:nowrap;width:1%;font-variant-numeric:tabular-nums}.name-cell{font-weight:500}.rank-cell{font-weight:500;color:var(--sub-text-color)}.count-cell{font-weight:600;color:var(--accent-color)}.date-cell{color:var(--sub-text-color)}.rank-gold,.rank-silver,.rank-bronze{font-weight:600}.rank-gold{color:var(--gold)!important}.rank-silver{color:var(--silver)!important}.rank-bronze{color:var(--bronze)!important}.percent-cell{position:relative}.percent-bar{position:absolute;top:0;right:0;height:100%;background-color:var(--accent-color);opacity:.15}.percent-text{position:relative;z-index:1}`;
+
     for (let i = 0; i < totalItems; i += CHUNK_SIZE) {
       const chunk = list.slice(i, i + CHUNK_SIZE);
       const pageNum = Math.floor(i / CHUNK_SIZE) + 1;
@@ -117,23 +130,32 @@ export class Renderer {
 
       const cardHtml = `<div class="container"><div class="header"><table class="header-table"><tr><td class="header-table-left"><div class="stat-chip">总计: <span>${typeof totalCount === 'number' ? totalCount.toLocaleString() : totalCount}</span></div></td><td class="header-table-center"><h1 class="title-text">${pageTitle}</h1></td><td class="header-table-right"><div class="time-label">${time.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')}</div></td></tr></table></div><div class="table-container"><table class="main-table">${tableHeadHtml}<tbody>${tableRowsHtml}</tbody></table></div></div>`;
 
-      const fullHtml = `<!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>:root{--card-bg:#fff;--text-color:#111827;--header-color:#111827;--sub-text-color:#6b7280;--border-color:#e5e7eb;--accent-color:#4a6ee0;--chip-bg:#f3f4f6;--stripe-bg:#f9fafb;--gold:#f59e0b;--silver:#9ca3af;--bronze:#a16207}body{display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:0 0;margin:0;padding:8px;-webkit-font-smoothing:antialiased}.container{display:inline-block;background:var(--card-bg);border-radius:12px;padding:0;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.05)}.header{padding:10px 14px}.header-table{border-collapse:collapse;width:100%}.header-table-left,.header-table-right{width:1%;white-space:nowrap}.header-table-left{text-align:left}.header-table-center{text-align:center}.header-table-right{text-align:right}.title-text{font-size:18px;font-weight:600;color:var(--header-color);margin:0}.stat-chip,.time-label{display:inline-flex;align-items:baseline;padding:4px 8px;border-radius:8px;background:var(--chip-bg);font-size:13px;color:var(--sub-text-color)}.stat-chip span{font-weight:600;color:var(--text-color);margin-left:4px}.table-container{border-top:1px solid var(--border-color)}.main-table{border-collapse:collapse;width:100%}.main-table th,.main-table td{padding:8px 14px;vertical-align:middle}.main-table th{font-size:12px;font-weight:500;color:var(--sub-text-color);text-transform:uppercase;letter-spacing:.05em;background:var(--stripe-bg)}.main-table td{font-size:14px;color:var(--text-color)}.main-table tbody tr:nth-child(even){background-color:var(--stripe-bg)}.main-table .name-cell,.main-table .name-header{text-align:left}.main-table .rank-cell,.main-table .count-cell,.main-table .date-cell,.main-table .percent-cell,.main-table .header-right-align{text-align:right;white-space:nowrap;width:1%;font-variant-numeric:tabular-nums}.name-cell{font-weight:500}.rank-cell{font-weight:500;color:var(--sub-text-color)}.count-cell{font-weight:600;color:var(--accent-color)}.date-cell{color:var(--sub-text-color)}.rank-gold,.rank-silver,.rank-bronze{font-weight:600}.rank-gold{color:var(--gold)!important}.rank-silver{color:var(--silver)!important}.rank-bronze{color:var(--bronze)!important}.percent-cell{position:relative}.percent-bar{position:absolute;top:0;right:0;height:100%;background-color:var(--accent-color);opacity:.15}.percent-text{position:relative;z-index:1}</style>
-        </head>
-        <body>
-          ${cardHtml}
-        </body>
-        </html>`;
-
+      const fullHtml = this.generateFullHtml(cardHtml, listStyles);
       const imageBuffer = await this.htmlToImage(fullHtml);
-      if (imageBuffer) {
-        imageBuffers.push(imageBuffer);
-      }
+      if (imageBuffer) imageBuffers.push(imageBuffer);
     }
 
     return imageBuffers.length > 0 ? imageBuffers : '图片渲染失败';
+  }
+
+  public async renderCircadianChart(data: CircadianChartData): Promise<string | Buffer[]> {
+    const { title, time, total, data: hourlyCounts } = data;
+    if (!hourlyCounts || hourlyCounts.every(c => c === 0)) return '暂无数据可供渲染';
+
+    const maxCount = Math.max(...hourlyCounts, 1);
+    const barsHtml = hourlyCounts.map((count, hour) => {
+      const barHeight = (count / maxCount) * 100;
+      const isPeak = count > 0 && count === maxCount;
+      return `<div class="bar-wrapper"><div class="bar-value ${count === 0 ? 'hidden' : ''}">${count}</div><div class="bar-container"><div class="bar ${isPeak ? 'peak' : ''}" style="height: ${barHeight}%;"></div></div><div class="bar-label">${hour}</div></div>`;
+    }).join('');
+
+    const cardHtml = `<div class="container"><div class="header"><table class="header-table"><tr><td class="header-table-left"><div class="stat-chip">总计: <span>${typeof total === 'number' ? total.toLocaleString() : total}</span></div></td><td class="header-table-center"><h1 class="title-text">${title}</h1></td><td class="header-table-right"><div class="time-label">${time.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')}</div></td></tr></table></div><div class="chart-container">${barsHtml}</div></div>`;
+
+    const chartStyles = `.chart-container{display:flex;align-items:flex-end;gap:4px;height:180px;padding:30px 15px 10px;border-top:1px solid var(--border-color)}.bar-wrapper{flex:1;text-align:center;display:flex;flex-direction:column;height:100%;justify-content:flex-end}.bar-value{font-size:11px;color:var(--sub-text-color);height:16px;line-height:16px;font-weight:500}.bar-value.hidden{visibility:hidden}.bar-container{flex-grow:1;display:flex;align-items:flex-end;width:100%}.bar{width:100%;background-color:var(--accent-color);opacity:.7;border-radius:3px 3px 0 0;transition:height .3s ease-out}.bar.peak{opacity:1;background-color:var(--gold)!important}.bar-label{font-size:10px;color:var(--sub-text-color);margin-top:4px;height:12px}`;
+
+    const fullHtml = this.generateFullHtml(cardHtml, chartStyles);
+    const imageBuffer = await this.htmlToImage(fullHtml);
+
+    return imageBuffer ? [imageBuffer] : '图片渲染失败';
   }
 }

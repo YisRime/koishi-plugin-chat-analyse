@@ -30,6 +30,7 @@ export interface Config {
   enableCmdStat: boolean;
   enableMsgStat: boolean;
   enableRankStat: boolean;
+  enableActivityStat: boolean;
   enableOriRecord: boolean;
   enableWhoAt: boolean;
   enableData: boolean;
@@ -46,6 +47,7 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
+    enableActivityStat: Schema.boolean().default(true).description('启用活跃分析'),
     enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
   }).description('功能配置'),
   Schema.object({

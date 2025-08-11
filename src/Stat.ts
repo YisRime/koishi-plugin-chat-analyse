@@ -32,7 +32,7 @@ export class Stat {
 
   /**
    * @public @method registerCommands
-   * @description 根据配置，动态地将 `.cmd`, `.msg`, `.rank` 子命令注册到主 `analyse` 命令下。
+   * @description 根据配置，动态地将子命令注册到主 `analyse` 命令下。
    * @param analyse - 主 `analyse` 命令实例。
    */
   public registerCommands(analyse: Command) {
@@ -142,6 +142,42 @@ export class Stat {
           return '渲染发言排行图片失败';
         }
       });
+
+    if (this.config.enableActivityStat) analyse.subcommand('.activity', '用户活跃分析')
+      .option('user', '-u <user:string> 指定用户')
+      .option('guild', '-g <guildId:string> 指定群组')
+      .option('all', '-a 全局')
+      .action(createHandler(async (scope) => {
+        const hourlyStats = await this.ctx.database.select('analyse_rank')
+            .where({ uid: { $in: scope.uids } })
+            .groupBy(
+                ['timestamp'],
+                { count: row => $.sum(row.count) }
+            )
+            .execute();
+
+        if (hourlyStats.length === 0) return '暂无消息数据';
+
+        const hourlyCounts = Array(24).fill(0);
+        let totalMessages = 0;
+
+        hourlyStats.forEach(stat => {
+            const hour = stat.timestamp.getHours();
+
+            hourlyCounts[hour] = stat.count;
+            totalMessages += stat.count;
+        });
+
+        const title = await this.generateTitle(scope.scopeDesc, { main: '活跃分析' });
+        const result = await this.renderer.renderCircadianChart({
+            title,
+            time: new Date(),
+            total: totalMessages,
+            data: hourlyCounts,
+        });
+
+        return result;
+      }));
   }
 
   /**
