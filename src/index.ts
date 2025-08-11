@@ -47,8 +47,8 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
-    enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
     enableActivity: Schema.boolean().default(true).description('启用活跃统计'),
+    enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
     rankRetentionDays: Schema.number().min(0).default(31).description('排行保留天数'),
     enableWhoAt: Schema.boolean().default(true).description('启用提及记录'),
     atRetentionDays: Schema.number().min(0).default(7).description('提及保留天数'),

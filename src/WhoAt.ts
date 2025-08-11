@@ -16,7 +16,7 @@ export class WhoAt {
       this.ctx.cron('0 0 * * *', async () => {
         const cutoffDate = new Date(Date.now() - this.config.atRetentionDays * Time.day);
         await this.ctx.database.remove('analyse_at', { timestamp: { $lt: cutoffDate } })
-          .catch(e => this.ctx.logger.error('清理提及历史记录失败:', e));
+          .catch(e => this.ctx.logger.error('清理提及记录失败:', e));
       });
     }
   }
@@ -28,6 +28,7 @@ export class WhoAt {
    */
   public registerCommand(cmd: Command) {
     cmd.subcommand('whoatme', '谁提及我')
+      .usage('查看最近提及我的消息，不分群组。')
       .action(async ({ session }) => {
         if (!session.userId) return '无法获取用户信息';
         try {
@@ -39,7 +40,7 @@ export class WhoAt {
           const users = await this.ctx.database.get('analyse_user', { uid: { $in: uids } }, ['uid', 'userName', 'userId']);
           const userInfoMap = new Map(users.map(u => [u.uid, { name: u.userName, id: u.userId }]));
           const messageElements = records.map(record => {
-            const senderInfo = userInfoMap.get(record.uid) ?? { name: '未知用户', id: '0' };
+            const senderInfo = userInfoMap.get(record.uid);
             return h('message', {}, [
               h('author', { userId: senderInfo.id, nickname: senderInfo.name }),
               h.text(record.content)
