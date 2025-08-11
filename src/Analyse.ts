@@ -57,7 +57,8 @@ export class Analyse {
 
           const allText = records.map(r => r.content).join(' ');
           const result = await this.nlp.process('zh', allText);
-          const words = result.stems.filter(stem => stem.length > 1);
+          // FIX: Provide a fallback empty array in case result.stems is undefined
+          const words = (result.stems || []).filter(stem => stem.length > 1);
 
           const wordCounts = words.reduce((map, word) => {
             map.set(word, (map.get(word) || 0) + 1);
@@ -109,7 +110,8 @@ export class Analyse {
           for (const [uid, messages] of messagesByUid.entries()) {
             const allText = messages.join(' ');
             const result = await this.nlp.process('zh', allText);
-            const words = result.stems.filter(stem => stem.length > 1);
+            // FIX: Provide a fallback empty array in case result.stems is undefined
+            const words = (result.stems || []).filter(stem => stem.length > 1);
 
             if (words.length < 50) continue;
 
