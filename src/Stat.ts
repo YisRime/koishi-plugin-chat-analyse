@@ -36,13 +36,19 @@ export class Stat {
    * @param analyse - 主 `analyse` 命令实例。
    */
   public registerCommands(analyse: Command) {
-    const createHandler = (handler: (scope: QueryScopeResult, options: any) => Promise<string | Buffer>) => {
+    const createHandler = (handler: (scope: QueryScopeResult, options: any) => Promise<string | Buffer[]>) => {
       return async ({ session, options }) => {
         const scope = await this.parseQueryScope(session, options);
         if (scope.error) return scope.error;
         try {
           const result = await handler(scope, options);
-          return Buffer.isBuffer(result) ? h.image(result, 'image/png') : result;
+          if (typeof result === 'string') return result;
+          if (Array.isArray(result)) {
+            if (result.length === 0) return '图片渲染失败';
+            for (const buffer of result) await session.sendQueued(h.image(buffer, 'image/png'));
+            return;
+          }
+          if (Buffer.isBuffer(result)) return h.image(result, 'image/png');
         } catch (error) {
           this.ctx.logger.error('渲染统计图片失败:', error);
           return '渲染统计图片失败';
@@ -55,13 +61,13 @@ export class Stat {
       .option('guild', '-g <guildId:string> 指定群组')
       .option('all', '-a 全局')
       .action(createHandler(async (scope) => {
-      const stats = await this.ctx.database.select('analyse_cmd').where({ uid: { $in: scope.uids } }).groupBy('command', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
-      if (stats.length === 0) return '暂无匹配指令统计数据';
-      const total = stats.reduce((sum, record) => sum + record.count, 0);
-      const list = stats.map(item => [item.command, item.count, item.lastUsed]);
-      const title = await this.generateTitle(scope.scopeDesc, { main: '命令使用' });
-      return this.renderer.renderList({ title, time: new Date(), total, list }, ['命令', '次数', '最后使用']);
-    }));
+        const stats = await this.ctx.database.select('analyse_cmd').where({ uid: { $in: scope.uids } }).groupBy('command', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+        if (stats.length === 0) return '暂无匹配指令统计数据';
+        const total = stats.reduce((sum, record) => sum + record.count, 0);
+        const list = stats.map(item => [item.command, item.count, item.lastUsed]);
+        const title = await this.generateTitle(scope.scopeDesc, { main: '命令使用' });
+        return this.renderer.renderList({ title, time: new Date(), total, list }, ['命令', '次数', '最后使用']);
+      }));
 
     if (this.config.enableMsgStat) analyse.subcommand('.msg', '消息发送统计')
       .option('user', '-u <user:string> 指定用户')
@@ -69,29 +75,29 @@ export class Stat {
       .option('type', '-t <type:string> 指定类型')
       .option('all', '-a 全局')
       .action(createHandler(async (scope, options) => {
-      const type = options.type;
-      if (type) {
-        const users = await this.ctx.database.get('analyse_user', { uid: { $in: scope.uids } }, ['uid', 'userName']);
-        const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
-        const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: scope.uids }, type }).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
-        if (stats.length === 0) return `暂无“${type}”类型消息数据`;
-        const total = stats.reduce((sum, r) => sum + r.count, 0);
-        const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
+        const type = options.type;
+        if (type) {
+          const users = await this.ctx.database.get('analyse_user', { uid: { $in: scope.uids } }, ['uid', 'userName']);
+          const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
+          const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: scope.uids }, type }).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+          if (stats.length === 0) return `暂无“${type}”类型消息数据`;
+          const total = stats.reduce((sum, r) => sum + r.count, 0);
+          const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
 
-        const title = await this.generateTitle(scope.scopeDesc, { main: '消息', subtype: type });
-        return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '条数', '最后发言']);
-      } else {
-        const users = await this.ctx.database.get('analyse_user', { uid: { $in: scope.uids } }, ['uid', 'userName']);
-        const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
-        const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: scope.uids } }).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
-        if (stats.length === 0) return '暂无消息数据';
-        const total = stats.reduce((sum, r) => sum + r.count, 0);
-        const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
+          const title = await this.generateTitle(scope.scopeDesc, { main: '消息', subtype: type });
+          return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '条数', '最后发言']);
+        } else {
+          const users = await this.ctx.database.get('analyse_user', { uid: { $in: scope.uids } }, ['uid', 'userName']);
+          const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
+          const stats = await this.ctx.database.select('analyse_msg').where({ uid: { $in: scope.uids } }).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+          if (stats.length === 0) return '暂无消息数据';
+          const total = stats.reduce((sum, r) => sum + r.count, 0);
+          const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
 
-        const title = await this.generateTitle(scope.scopeDesc, { main: '消息发送' });
-        return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '总计发言', '最后发言']);
-      }
-    }));
+          const title = await this.generateTitle(scope.scopeDesc, { main: '消息发送' });
+          return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '总计发言', '最后发言']);
+        }
+      }));
 
     if (this.config.enableRankStat) analyse.subcommand('.rank', '用户发言排行')
       .option('guild', '-g <guildId:string> 指定群组')
@@ -99,37 +105,43 @@ export class Stat {
       .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
       .option('all', '-a 全局')
       .action(async ({ session, options }) => {
-      const guildId = options.all ? undefined : (options.guild || session.guildId);
-      if (!guildId && !options.all) return '请指定群组或查询全局';
-      try {
-        const { hours, type } = options;
-        const since = new Date(Date.now() - hours * Time.hour);
-        const baseQuery: any = { timestamp: { $gte: since } };
-        if (type) baseQuery.type = type;
+        const guildId = options.all ? undefined : (options.guild || session.guildId);
+        if (!guildId && !options.all) return '请指定群组或查询全局';
+        try {
+          const { hours, type } = options;
+          const since = new Date(Date.now() - hours * Time.hour);
+          const baseQuery: any = { timestamp: { $gte: since } };
+          if (type) baseQuery.type = type;
 
-        const uidsInScope = guildId ? (await this.ctx.database.get('analyse_user', { channelId: guildId }, ['uid'])).map(u => u.uid) : undefined;
-        if (guildId && uidsInScope.length === 0) return '暂无指定时段内发言记录';
-        if (uidsInScope) baseQuery.uid = { $in: uidsInScope };
+          const uidsInScope = guildId ? (await this.ctx.database.get('analyse_user', { channelId: guildId }, ['uid'])).map(u => u.uid) : undefined;
+          if (guildId && uidsInScope.length === 0) return '暂无指定时段内发言记录';
+          if (uidsInScope) baseQuery.uid = { $in: uidsInScope };
 
-        const rankStats = await this.ctx.database.select('analyse_rank').where(baseQuery).groupBy('uid', { count: row => $.sum(row.count) }).orderBy('count', 'desc').limit(100).execute();
-        if (rankStats.length === 0) return '暂无指定时段内发言记录';
+          const rankStats = await this.ctx.database.select('analyse_rank').where(baseQuery).groupBy('uid', { count: row => $.sum(row.count) }).orderBy('count', 'desc').execute();
+          if (rankStats.length === 0) return '暂无指定时段内发言记录';
 
-        const uids = rankStats.map(s => s.uid);
-        const users = await this.ctx.database.get('analyse_user', { uid: { $in: uids } }, ['uid', 'userName']);
-        const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
+          const uids = rankStats.map(s => s.uid);
+          const users = await this.ctx.database.get('analyse_user', { uid: { $in: uids } }, ['uid', 'userName']);
+          const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
 
-        const total = rankStats.reduce((sum, record) => sum + record.count, 0);
-        const list = rankStats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count]);
+          const total = rankStats.reduce((sum, record) => sum + record.count, 0);
+          const list = rankStats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count]);
 
-        const listWithPercentage = list.map(row => [...row, total > 0 ? `${((row[1] as number) / total * 100).toFixed(2)}%` : '0.00%']);
-        const title = await this.generateTitle({ guildId }, { main: '发言排行', timeRange: hours, subtype: type });
-        const result = await this.renderer.renderList({ title, time: new Date(), total, list: listWithPercentage }, ['用户', '总计发言', '占比']);
-        return Buffer.isBuffer(result) ? h.image(result, 'image/png') : result;
-      } catch (error) {
-        this.ctx.logger.error('渲染发言排行图片失败:', error);
-        return '渲染发言排行图片失败';
-      }
-    });
+          const listWithPercentage = list.map(row => [...row, total > 0 ? `${((row[1] as number) / total * 100).toFixed(2)}%` : '0.00%']);
+          const title = await this.generateTitle({ guildId }, { main: '发言排行', timeRange: hours, subtype: type });
+          const result = await this.renderer.renderList({ title, time: new Date(), total, list: listWithPercentage }, ['用户', '总计发言', '占比']);
+
+          if (typeof result === 'string') return result;
+          if (Array.isArray(result)) {
+            if (result.length === 0) return '图片渲染失败';
+            for (const buffer of result) await session.sendQueued(h.image(buffer, 'image/png'));
+            return;
+          }
+        } catch (error) {
+          this.ctx.logger.error('渲染发言排行图片失败:', error);
+          return '渲染发言排行图片失败';
+        }
+      });
   }
 
   /**
