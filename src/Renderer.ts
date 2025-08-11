@@ -1,5 +1,6 @@
 import { Context, Time } from 'koishi';
 import {} from 'koishi-plugin-puppeteer';
+import { WordCloudData } from './Analyse';
 
 /**
  * @interface ListRenderData
@@ -105,7 +106,7 @@ export class Renderer {
   private async htmlToImage(fullHtmlContent: string): Promise<Buffer | null> {
     const page = await this.ctx.puppeteer.page();
     try {
-      await page.setViewport({ width: 720, height: 10, deviceScaleFactor: 2.0 });
+      await page.setViewport({ width: 850, height: 10, deviceScaleFactor: 2.0 });
       await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' });
       const { width, height } = await page.evaluate(() => ({
           width: document.body.scrollWidth,
@@ -276,6 +277,59 @@ export class Renderer {
     const fullHtml = this.generateFullHtml(cardHtml, chartStyles);
     const imageBuffer = await this.htmlToImage(fullHtml);
 
+    return imageBuffer ? [imageBuffer] : '图片渲染失败';
+  }
+
+  /**
+   * @public
+   * @method renderWordCloud
+   * @description 将词频数据渲染成一张词云图片，使用 Puppeteer 和 wordcloud2.js。
+   * @param {WordCloudData} data - 包含标题、时间和词汇列表的对象。
+   * @returns {Promise<string | Buffer[]>} - 成功时返回图片 Buffer 数组，否则返回提示。
+   */
+  public async renderWordCloud(data: WordCloudData): Promise<string | Buffer[]> {
+    const { title, time, words } = data;
+    if (!words?.length) return '暂无数据可供渲染';
+
+    const wordListJson = JSON.stringify(words);
+
+    const cardHtml = `
+      <div class="container">
+        <div class="header">
+          <div class="stat-chip">词数: <span>${words.length}</span></div>
+          <h1 class="title-text">${title}</h1>
+          <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
+        </div>
+        <div id="wordcloud-container" style="width: 800px; height: 600px; margin: auto;"></div>
+        <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.js"></script>
+        <script>
+          WordCloud(document.getElementById('wordcloud-container'), {
+            list: ${wordListJson},
+            gridSize: 16,
+            weightFactor: (size) => Math.pow(size, 1.2) * 2.5,
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+            color: 'random-dark',
+            backgroundColor: 'transparent',
+            rotateRatio: 0.5,
+            minRotation: -Math.PI / 6,
+            maxRotation: Math.PI / 6,
+            shuffle: false,
+          });
+        </script>
+      </div>`;
+
+    const fullHtml = `<!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>${this.COMMON_STYLE}</style>
+        </head>
+        <body>
+          ${cardHtml}
+        </body>
+      </html>`;
+
+    const imageBuffer = await this.htmlToImage(fullHtml);
     return imageBuffer ? [imageBuffer] : '图片渲染失败';
   }
 }

@@ -1,8 +1,9 @@
-import { Context, Schema } from 'koishi';
+import { Context, Schema, Session, h } from 'koishi';
 import { Collector } from './Collector';
 import { Stat } from './Stat';
 import { WhoAt } from './WhoAt';
 import { Data } from './Data';
+import { Analyse } from './Analyse';
 
 /** @name 插件使用说明 */
 export const usage = `
@@ -36,6 +37,8 @@ export interface Config {
   enableDataIO: boolean;
   atRetentionDays: number;
   rankRetentionDays: number;
+  enableWordCloud: boolean;
+  enableVocabulary: boolean;
 }
 
 /** @description 插件的配置项定义 */
@@ -55,8 +58,66 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description('基础分析配置'),
   Schema.object({
     enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
+    enableWordCloud: Schema.boolean().default(true).description('启用词云生成'),
+    enableVocabulary: Schema.boolean().default(true).description('启用词汇排行'),
   }).description('高级分析配置'),
 ]);
+
+/**
+ * @private @method parseQueryScope
+ * @description 解析命令选项，转换为包含 UIDs 和描述性信息的统一查询范围对象。
+ * @param session - 当前会话对象。
+ * @param options - 命令选项。
+ * @returns 包含 uids、错误或范围描述的查询范围对象。
+ */
+export async function parseQueryScope(ctx: Context, session: Session, options: { user?: string; guild?: string; all?: boolean }): Promise<{ uids?: number[]; error?: string; scopeDesc: { guildId?: string; userId?: string } }> {
+    const scopeDesc = { guildId: options.guild, userId: undefined };
+    if (options.user) scopeDesc.userId = h.select(options.user, 'at')[0]?.attrs.id ?? options.user.trim();
+    if (!options.all && !scopeDesc.guildId && !scopeDesc.userId) scopeDesc.guildId = session.guildId;
+    if (!options.all && !scopeDesc.guildId && !scopeDesc.userId) return { error: '请指定查询范围', scopeDesc };
+
+    const query: any = {};
+    if (scopeDesc.guildId) query.channelId = scopeDesc.guildId;
+    if (scopeDesc.userId) query.userId = scopeDesc.userId;
+    if (Object.keys(query).length === 0) return { uids: undefined, scopeDesc };
+
+    const users = await ctx.database.get('analyse_user', query, ['uid']);
+    if (users.length === 0) return { error: '暂无统计数据', scopeDesc };
+
+    return { uids: users.map(u => u.uid), scopeDesc };
+}
+
+/**
+ * @private @method generateTitle
+ * @description 根据查询范围和类型动态生成易于理解的图片标题。
+ * @returns 生成的标题字符串。
+ */
+export async function generateTitle(ctx: Context, scopeDesc: { guildId?: string, userId?: string }, options: { main: string; subtype?: string; timeRange?: number; }): Promise<string> {
+    let guildName = '', userName = '', scopeText = '全局';
+
+    if (scopeDesc.guildId) {
+      const [guild] = await ctx.database.get('analyse_user', { channelId: scopeDesc.guildId }, ['channelName']);
+      guildName = guild?.channelName || scopeDesc.guildId;
+    }
+    if (scopeDesc.userId) {
+      const [user] = await ctx.database.get('analyse_user', { userId: scopeDesc.userId }, ['userName']);
+      userName = user?.userName || scopeDesc.userId;
+    }
+
+    const typeText = options.subtype ? `“${options.subtype}”` : '';
+    const mainText = options.main;
+
+    if (mainText.includes('排行')) {
+      scopeText = guildName || '全局';
+      return `${options.timeRange}小时${scopeText}${typeText}${mainText}`;
+    }
+
+    if (userName && guildName) scopeText = `${guildName} ${userName}`;
+    else if (userName) scopeText = userName;
+    else if (guildName) scopeText = guildName;
+
+    return `${scopeText}${typeText}${mainText}统计`;
+}
 
 /**
  * @function apply
@@ -73,4 +134,5 @@ export function apply(ctx: Context, config: Config) {
   new Stat(ctx, config).registerCommands(analyse);
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
   if (config.enableDataIO) new Data(ctx).registerCommands(analyse);
+  if (config.enableOriRecord && (config.enableWordCloud || config.enableVocabulary)) new Analyse(ctx, config).registerCommands(analyse);
 }
