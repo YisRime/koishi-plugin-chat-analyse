@@ -173,7 +173,8 @@ export class Data {
 
         const uniqueChannels = [...new Map(allChannelInfo.map(item => [item.channelId, item])).values()];
         const channelOutput = uniqueChannels.length ? '频道列表:\n' + uniqueChannels.map(c => `[${c.channelId}] ${c.channelName}`).join('\n') : '暂无频道记录';
-        const commandOutput = commands.length ? '命令列表:\n' + commands.join(', ') : '暂无命令记录';
+        const commandNames = commands.map(c => c.command);
+        const commandOutput = commandNames.length ? '命令列表:\n' + commandNames.join(', ') : '暂无命令记录';
 
         return `${channelOutput}\n${commandOutput}`;
       });

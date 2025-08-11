@@ -52,12 +52,35 @@ export class Stat {
       cmd.subcommand('cmdstat', '命令统计')
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
+        .option('separate', '-h 分离展示')
         .option('all', '-a 全局')
-        .action(createHandler(async (scope) => {
+        .action(createHandler(async (scope, options) => {
           const stats = await this.ctx.database.select('analyse_cmd').where({ uid: { $in: scope.uids } }).groupBy('command', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
           if (stats.length === 0) return '暂无统计数据';
-          const total = stats.reduce((sum, record) => sum + record.count, 0);
-          const list = stats.map(item => [item.command, item.count, item.lastUsed]);
+
+          let processedStats;
+
+          if (options.separate) {
+            processedStats = stats;
+          } else {
+            const mergedStatsMap = new Map<string, { count: number; lastUsed: Date }>();
+            for (const stat of stats) {
+              const mainCommand = stat.command.split('.')[0];
+              const existing = mergedStatsMap.get(mainCommand) || { count: 0, lastUsed: new Date(0) };
+              existing.count += stat.count;
+              if (stat.lastUsed > existing.lastUsed) existing.lastUsed = stat.lastUsed;
+              mergedStatsMap.set(mainCommand, existing);
+            }
+
+            processedStats = Array.from(mergedStatsMap.entries()).map(([command, data]) => ({
+              command,
+              count: data.count,
+              lastUsed: data.lastUsed,
+            })).sort((a, b) => b.count - a.count);
+          }
+
+          const total = processedStats.reduce((sum, record) => sum + record.count, 0);
+          const list = processedStats.map(item => [item.command, item.count, item.lastUsed]);
           const title = await this.generateTitle(scope.scopeDesc, { main: '命令' });
           return this.renderer.renderList({ title, time: new Date(), total, list }, ['命令', '次数', '最后使用']);
         }));
