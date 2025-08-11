@@ -30,34 +30,32 @@ export interface Config {
   enableCmdStat: boolean;
   enableMsgStat: boolean;
   enableRankStat: boolean;
-  enableActivityStat: boolean;
+  enableActivity: boolean;
   enableOriRecord: boolean;
   enableWhoAt: boolean;
-  enableData: boolean;
+  enableDataIO: boolean;
   atRetentionDays: number;
   rankRetentionDays: number;
 }
 
-/** @description 插件的配置项定义，使用 Koishi Schema 构建。 */
+/** @description 插件的配置项定义 */
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableListener: Schema.boolean().default(true).description('启用消息监听'),
-    enableData: Schema.boolean().default(false).description('启用数据管理'),
-  }).description('基础配置'),
+    enableDataIO: Schema.boolean().default(true).description('启用数据管理'),
+  }).description('杂项配置'),
   Schema.object({
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
-    enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
-  }).description('功能配置'),
-  Schema.object({
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
-    enableActivityStat: Schema.boolean().default(true).description('启用活跃分析'),
-    rankRetentionDays: Schema.number().min(0).default(31).description('记录保留天数'),
-  }).description('发言排行配置'),
+    enableActivity: Schema.boolean().default(true).description('启用活跃统计'),
+    rankRetentionDays: Schema.number().min(0).default(31).description('排行保留天数'),
+    enableWhoAt: Schema.boolean().default(true).description('启用提及记录'),
+    atRetentionDays: Schema.number().min(0).default(7).description('提及保留天数'),
+  }).description('基础分析配置'),
   Schema.object({
-    enableWhoAt: Schema.boolean().default(true).description('启用@记录'),
-    atRetentionDays: Schema.number().min(0).default(7).description('记录保留天数'),
-  }).description('@记录配置'),
+    enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
+  }).description('高级分析配置'),
 ]);
 
 /**
@@ -69,10 +67,10 @@ export const Config: Schema<Config> = Schema.intersect([
 export function apply(ctx: Context, config: Config) {
   if (config.enableListener) new Collector(ctx, config);
 
-  const analyse = ctx.command('analyse', '聊天记录分析');
+  const analyse = ctx.command('analyse', '数据分析');
 
   // 动态注册功能模块
   new Stat(ctx, config).registerCommands(analyse);
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
-  if (config.enableData) new Data(ctx).registerCommands(analyse);
+  if (config.enableDataIO) new Data(ctx).registerCommands(analyse);
 }

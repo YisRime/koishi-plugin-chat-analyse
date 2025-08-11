@@ -8,7 +8,7 @@ const BATCH_SIZE = 100;
 
 /**
  * @class Data
- * @description 提供数据备份、恢复和清理等高级管理功能。恢复逻辑采用分批处理以优化性能。
+ * @description 提供数据备份、恢复和清理等高级管理功能。
  */
 export class Data {
   private dataDir: string;
@@ -91,17 +91,25 @@ export class Data {
       .option('guild', '-g <guildId:string> 指定群组')
       .option('user', '-u <user:string> 指定用户')
       .option('days', '-d <days:number> 指定天数')
+      .option('command', '-c <command:string> 指定命令')
       .option('all', '-a 清理全部数据')
       .action(async ({ options }) => {
-        if (Object.keys(options).length === 0) return '请提供清理条件';
+        if (Object.keys(options).length === 0) return '请提供清理条件。';
         try {
           if (options.all) {
             await Promise.all(ALL_TABLES.map(tableName => this.ctx.database.remove(tableName, {})));
-            return '已清除所有聊天分析数据';
+            return '已清除所有聊天分析数据。';
           }
 
-          const tablesToClear = options.table ? [options.table] : ALL_TABLES.filter(t => t !== 'analyse_user');
-          if (options.table && !ALL_TABLES.includes(options.table as keyof Tables)) return `无效表名: ${options.table}。`;
+          if (options.command && options.table && options.table !== 'analyse_cmd') {
+            return "指定命令(-c)清理时，目标表必须为 'analyse_cmd' 或不指定。";
+          }
+
+          const tablesToClear = options.command
+            ? ['analyse_cmd']
+            : (options.table ? [options.table] : ALL_TABLES.filter(t => t !== 'analyse_user'));
+
+          if (options.table && !ALL_TABLES.includes(options.table as keyof Tables)) return `无效的表名: ${options.table}。`;
 
           const query: any = {};
           const descParts: string[] = [];
@@ -111,7 +119,7 @@ export class Data {
             if (options.guild) { userQuery.channelId = options.guild; descParts.push(`群组 ${options.guild}`); }
             if (options.user) { userQuery.userId = Element.select(options.user, 'at')[0]?.attrs.id ?? options.user; descParts.push(`用户 ${userQuery.userId}`); }
             const uidsToClear = (await this.ctx.database.get('analyse_user', userQuery)).map(u => u.uid);
-            if (uidsToClear.length === 0) return '未找到匹配记录';
+            if (uidsToClear.length === 0) return '未找到匹配的用户记录，无法进行清理。';
             query.uid = { $in: [...new Set(uidsToClear)] };
           }
 
@@ -120,14 +128,20 @@ export class Data {
             descParts.push(`超过 ${options.days} 天`);
           }
 
+          if (options.command) {
+            query.command = options.command;
+            descParts.push(`命令“${options.command}”`);
+          }
+
           for (const tableName of tablesToClear) await this.ctx.database.remove(tableName as any, query);
 
-          const targetStr = options.table ? `表 ${options.table}` : '所有相关表';
-          return `已成功清理${targetStr}中${descParts.join('且')}的数据`;
+          const targetStr = options.command ? `命令 ${options.command} 的数据` : (options.table ? `表 ${options.table}` : '所有相关表');
+          const conditionsStr = descParts.length > 0 ? `满足“${descParts.join('且')}”条件` : '';
+          return `已成功清理${targetStr}中${conditionsStr}的数据。`;
 
         } catch (error) {
           this.ctx.logger.error('数据清理失败:', error);
-          return '数据清理失败';
+          return '数据清理失败。';
         }
       });
 

@@ -143,7 +143,7 @@ export class Stat {
         }
       });
 
-    if (this.config.enableActivityStat) cmd.subcommand('.activity', '用户活跃分析')
+    if (this.config.enableActivity) cmd.subcommand('.activity', '用户活跃分析')
       .option('user', '-u <user:string> 指定用户')
       .option('guild', '-g <guildId:string> 指定群组')
       .option('all', '-a 全局')

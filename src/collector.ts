@@ -1,7 +1,7 @@
 import { Context, Session, Element, Tables, $, h, Time } from 'koishi';
 import { Config } from './index';
 
-// 扩展 Koishi 的数据表接口
+// 扩展数据表接口
 declare module 'koishi' {
   interface Tables {
     analyse_user: { uid: number; channelId: string; userId: string; channelName: string; userName: string };
@@ -13,29 +13,24 @@ declare module 'koishi' {
   }
 }
 
-/** @interface UserCache - 定义用户缓存对象的结构。 */
-interface UserCache { uid: number; userName: string; }
-
 /**
  * @class Collector
  * @description 核心数据收集器。根据配置，高效地监听、收集、缓冲并持久化聊天数据。
  */
 export class Collector {
-  /** @property FLUSH_INTERVAL - 内存缓存区定时刷入数据库的间隔（毫秒）。 */
   private static readonly FLUSH_INTERVAL = Time.minute;
-  /** @property BUFFER_THRESHOLD - 内存缓存区触发刷新的消息数量阈值。 */
   private static readonly BUFFER_THRESHOLD = 60;
 
-  // 统一的数据缓冲区
+  // 数据缓冲区
   private msgStatBuffer = new Map<string, { uid: number; type: string; count: number; timestamp: Date }>();
   private rankStatBuffer = new Map<string, { uid: number; timestamp: Date; type: string; count: number }>();
   private cmdStatBuffer = new Map<string, { uid: number; command: string; count: number; timestamp: Date }>();
   private oriCacheBuffer: Omit<Tables['analyse_cache'], 'id'>[] = [];
   private whoAtBuffer: Omit<Tables['analyse_at'], 'id'>[] = [];
 
-  private userCache = new Map<string, UserCache>();
+  private userCache = new Map<string, { uid: number; userName: string; }>();
   private channelCache = new Map<string, string>();
-  private pendingRequests = new Map<string, Promise<UserCache | null>>();
+  private pendingRequests = new Map<string, Promise<{ uid: number; userName: string; } | null>>();
   private flushInterval: NodeJS.Timeout;
 
   /**
@@ -43,17 +38,15 @@ export class Collector {
    * @param config - 插件的配置对象。
    */
   constructor(private ctx: Context, private config: Config) {
-    // 基础用户表，几乎所有功能都依赖它，只要监听器开启就注册
     this.ctx.model.extend('analyse_user', { uid: 'unsigned', channelId: 'string', userId: 'string', channelName: 'string', userName: 'string' }, { primary: 'uid', autoInc: true, indexes: ['channelId', 'userId'] });
 
-    // 根据配置注册其他数据表
     if (config.enableCmdStat) {
       this.ctx.model.extend('analyse_cmd', { uid: 'unsigned', command: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'command'] });
     }
     if (config.enableMsgStat) {
       this.ctx.model.extend('analyse_msg', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'type'] });
     }
-    if (config.enableRankStat || config.enableActivityStat) {
+    if (config.enableRankStat || config.enableActivity) {
       this.ctx.model.extend('analyse_rank', { uid: 'unsigned', type: 'string', count: 'unsigned', timestamp: 'timestamp' }, { primary: ['uid', 'timestamp', 'type'] });
     }
     if (this.config.enableOriRecord) {
@@ -81,14 +74,14 @@ export class Collector {
     if (!channelId || !userId || !content?.trim()) return;
 
     const cacheKey = `${channelId}:${userId}`;
-    let user: UserCache | null;
+    let user: { uid: number; userName: string; } | null;
 
     if (this.userCache.has(cacheKey)) {
       user = this.userCache.get(cacheKey)!;
     } else if (this.pendingRequests.has(cacheKey)) {
       user = await this.pendingRequests.get(cacheKey)!;
     } else {
-      const promise = (async (): Promise<UserCache | null> => {
+      const promise = (async (): Promise<{ uid: number; userName: string; } | null> => {
         try {
           const [dbUser] = await this.ctx.database.get('analyse_user', { channelId, userId });
           const currentUserName = session.username ?? '';
@@ -106,13 +99,13 @@ export class Collector {
               dbUser.userName = currentUserName;
               dbUser.channelName = currentChannelName;
             }
-            const cacheData: UserCache = { uid: dbUser.uid, userName: dbUser.userName };
+            const cacheData: { uid: number; userName: string; } = { uid: dbUser.uid, userName: dbUser.userName };
             this.userCache.set(cacheKey, cacheData);
             return cacheData;
           }
 
           const createdUser = await this.ctx.database.create('analyse_user', { channelId, userId, userName: currentUserName, channelName: currentChannelName });
-          const cacheData: UserCache = { uid: createdUser.uid, userName: createdUser.userName };
+          const cacheData: { uid: number; userName: string; } = { uid: createdUser.uid, userName: createdUser.userName };
           this.userCache.set(cacheKey, cacheData);
           return cacheData;
         } catch (error) {
@@ -152,7 +145,7 @@ export class Collector {
         this.msgStatBuffer.set(msgKey, msgEntry);
       }
       // 发言排行
-      if (this.config.enableRankStat || this.config.enableActivityStat) {
+      if (this.config.enableRankStat || this.config.enableActivity) {
         const rankKey = `${uid}:${hourStart.toISOString()}:${type}`;
         const rankEntry = this.rankStatBuffer.get(rankKey) ?? { uid, timestamp: hourStart, type, count: 0 };
         rankEntry.count++;
@@ -160,7 +153,7 @@ export class Collector {
       }
     }
 
-    // 更新@记录
+    // 更新提及记录
     if (this.config.enableWhoAt) {
       const sanitizedContent = this.sanitizeContent(elements.filter(e => e.type !== 'at'));
       for (const atElement of elements.filter(e => e.type === 'at')) {
