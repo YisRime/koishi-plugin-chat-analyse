@@ -301,7 +301,7 @@ export class Renderer {
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
         <div id="wordcloud-container" style="width: 800px; height: 600px; margin: auto;"></div>
-        <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.js"></script>
+        <script src="https://unpkg.com/wordcloud@1.2.2/src/wordcloud2.js"></script>
         <script>
           WordCloud(document.getElementById('wordcloud-container'), {
             list: ${wordListJson},
