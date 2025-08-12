@@ -38,6 +38,7 @@ export interface Config {
   atRetentionDays: number;
   rankRetentionDays: number;
   enableWordCloud: boolean;
+  cacheRetentionDays: number;
 }
 
 /** @description 插件的配置项定义 */
@@ -51,12 +52,13 @@ export const Config: Schema<Config> = Schema.intersect([
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
     enableActivity: Schema.boolean().default(true).description('启用活跃统计'),
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
-    rankRetentionDays: Schema.number().min(0).default(31).description('排行保留天数'),
+    rankRetentionDays: Schema.number().min(0).default(365).description('排行保留天数'),
     enableWhoAt: Schema.boolean().default(true).description('启用提及记录'),
     atRetentionDays: Schema.number().min(0).default(7).description('提及保留天数'),
   }).description('基础分析配置'),
   Schema.object({
     enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
+    cacheRetentionDays: Schema.number().min(0).default(180).description('记录保留天数'),
     enableWordCloud: Schema.boolean().default(true).description('启用词云生成'),
   }).description('高级分析配置'),
 ]);

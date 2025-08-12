@@ -21,6 +21,14 @@ export class Analyse {
   constructor(private ctx: Context, private config: Config) {
     this.renderer = new Renderer(ctx);
     if (config.enableWordCloud) this.jieba = Jieba.withDict(dict);
+
+    if (this.config.enableOriRecord && this.config.cacheRetentionDays > 0) {
+      this.ctx.cron('0 0 * * *', async () => {
+        const cutoffDate = new Date(Date.now() - this.config.cacheRetentionDays * Time.day);
+        await this.ctx.database.remove('analyse_cache', { timestamp: { $lt: cutoffDate } })
+          .catch(e => this.ctx.logger.error('清理原始记录缓存失败:', e));
+      });
+    }
   }
 
   /**
@@ -66,7 +74,7 @@ export class Analyse {
           if (!words.length) return '暂无有效词语';
 
           const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
-          const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 150);
+          const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
           const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云' });
 
           const result = await this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
