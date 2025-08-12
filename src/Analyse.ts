@@ -77,6 +77,8 @@ export class Analyse {
           const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
           const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云' });
 
+          this.ctx.logger.info(`准备渲染词云（词数:${wordList.length}）:${JSON.stringify(wordList.slice(0, 10))}`);
+
           const result = await this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
 
           if (typeof result === 'string') return result;
