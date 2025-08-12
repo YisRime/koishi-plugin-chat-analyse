@@ -120,7 +120,7 @@ export class Renderer {
       this.ctx.logger.error('图片渲染失败:', error);
       return null;
     } finally {
-      await page.close().catch(e => this.ctx.logger.error('关闭页面失败:', e));
+      if (page && !page.isClosed()) await page.close()
     }
   }
 
@@ -293,6 +293,7 @@ export class Renderer {
     if (!words?.length) return '暂无数据可供渲染';
 
     const wordListJson = JSON.stringify(words);
+    const colorPalette = ['#2c5b7a', '#3a8fb7', '#64b9cc', '#97d8c4', '#ccece6', '#7f8c8d'];
 
     const cardHtml = `
       <div class="container">
@@ -304,16 +305,20 @@ export class Renderer {
         <div id="wordcloud-container" style="width: 800px; height: 600px; margin: auto;"></div>
         <script>${wordCloudScript}</script>
         <script>
+          const palette = ${JSON.stringify(colorPalette)};
           WordCloud(document.getElementById('wordcloud-container'), {
             list: ${wordListJson},
-            gridSize: 16,
-            weightFactor: (size) => Math.pow(size, 1.2) * 2.5,
-            color: 'random-dark',
+            fontFamily: '"Noto Sans CJK SC", "Helvetica Neue", "Arial", sans-serif',
+            weightFactor: (size) => Math.log(size) * 18,
+            color: (word, weight) => palette[weight % palette.length],
             backgroundColor: 'transparent',
-            rotateRatio: 0.5,
+            shape: 'square',
+            ellipticity: 0.6,
+            gridSize: 8,
+            rotateRatio: 0.3,
             minRotation: -Math.PI / 6,
             maxRotation: Math.PI / 6,
-            shuffle: false,
+            shuffle: true,
           });
         </script>
       </div>`;
