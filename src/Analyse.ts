@@ -58,16 +58,12 @@ export class Analyse {
 
           if (!records.length) return '暂无统计数据';
 
-          const allText = records.map(r => r.content).join(' ');
-          const exclusionSet = new Set([
-            '[face]', '[file]', '[forward]', '[img]', '[audio]',
-            '[video]', '[json]', '[rps]', '[markdown]', '[dice]'
-          ]);
+          const exclusionRegex = /\[(face|file|forward|img|gif|audio|video|json|rps|markdown|dice|at:.*?)\]/g;
+          const allText = records.map(r => r.content.replace(exclusionRegex, '')).join(' ');
+
           const words = this.jieba.cut(allText).filter(w => {
-            if (w.length <= 1) return false;        // 过滤掉单个字
+            if (w.trim().length <= 1) return false; // 过滤掉单个字
             if (/^\d+$/.test(w)) return false;      // 过滤掉纯数字
-            if (exclusionSet.has(w)) return false;  // 过滤掉排除列表中的内容
-            if (/^\[at:.*?\]$/.test(w)) return false; // 单独过滤 [at:xxx] 格式
             return true;
           });
 
@@ -76,9 +72,6 @@ export class Analyse {
           const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
           const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
           const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云' });
-
-          this.ctx.logger.info(`准备渲染词云（词数:${wordList.length}）:${JSON.stringify(wordList.slice(0, 10))}`);
-
           const result = await this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
 
           if (typeof result === 'string') return result;

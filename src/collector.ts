@@ -177,11 +177,20 @@ export class Collector {
    * @param elements - 消息元素数组。
    * @returns 净化后的纯文本。
    */
-  private sanitizeContent = (elements: Element[]): string => h.transform(elements, {
-    text: (attrs) => attrs.content,
-    img: (attrs) => attrs.summary === '[动画表情]' ? '[gif]' : '[img]',
-    at: (attrs) => `[at:${attrs.id}]`,
-  }, '').join('');
+  private sanitizeContent = (elements: Element[]): string =>
+    elements.map(e => {
+      if (!e || !e.attrs) return '';
+      switch (e.type) {
+        case 'text':
+          return e.attrs.content || '';
+        case 'img':
+          return e.attrs.summary === '[动画表情]' ? '[gif]' : '[img]';
+        case 'at':
+          return `[at:${e.attrs.id}]`;
+        default:
+          return `[${e.type}]`;
+      }
+    }).join('');
 
   /**
    * @private @method flushBuffers

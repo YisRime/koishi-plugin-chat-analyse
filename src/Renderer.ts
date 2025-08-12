@@ -1,6 +1,7 @@
 import { Context, Time } from 'koishi';
 import {} from 'koishi-plugin-puppeteer';
 import { WordCloudData } from './Analyse';
+import { wordCloudScript } from './wordcloud';
 
 /**
  * @interface ListRenderData
@@ -303,7 +304,7 @@ export class Renderer {
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
         <div id="wordcloud-container" style="width: 800px; height: 600px; margin: auto;"></div>
-        <script src="https://unpkg.com/wordcloud@1.2.2/src/wordcloud2.js"></script>
+        <script>${wordCloudScript}</script>
         <script>
           WordCloud(document.getElementById('wordcloud-container'), {
             list: ${wordListJson},
