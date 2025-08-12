@@ -333,12 +333,14 @@ export class Renderer {
           const palette = ${JSON.stringify(selectedPalette)};
           WordCloud(document.getElementById('wordcloud-container'), {
             list: ${wordListJson},
-            fontFamily: '"Noto Sans CJK SC", "Helvetica Neue", "Arial", sans-serif',
+            fontFamily: '"Noto Sans CJK SC", "Arial", sans-serif',
             weightFactor: (size) => (Math.log(size) + 1) * ${weightFactor},
             color: (word, weight, fontSize, distance, theta) => {
               return palette[Math.floor(Math.random() * palette.length)];
             },
             backgroundColor: 'transparent',
+            shape: 'square',
+            ellipticity: 0.6,
             gridSize: 8,
             rotateRatio: 1,
             minRotation: -Math.PI / 4,
