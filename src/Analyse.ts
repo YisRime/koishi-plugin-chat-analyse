@@ -70,7 +70,10 @@ export class Analyse {
           if (!words.length) return '暂无有效词语';
 
           const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
-          const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 200);
+          const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
+
+          session.send(`正在生成词云:${wordList.slice(0, 10)}`);
+
           const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云' });
           const result = await this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
 

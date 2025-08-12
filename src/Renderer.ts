@@ -31,6 +31,17 @@ export interface CircadianChartData {
  * @description 负责将结构化的数据渲染为设计精美的 PNG 图片。
  */
 export class Renderer {
+
+  private readonly COLOR_PALETTES = [
+    ['#2c5b7a', '#3a8fb7', '#64b9cc', '#97d8c4', '#ccece6', '#7f8c8d'], // Blue/Teal
+    ['#d946ef', '#a21caf', '#86198f', '#fdf4ff', '#faf5ff', '#f5d0fe'], // Fuchsia/Purple
+    ['#4f46e5', '#6366f1', '#a5b4fc', '#e0e7ff', '#eef2ff', '#3730a3'], // Indigo
+    ['#d97706', '#f59e0b', '#fcd34d', '#fefce8', '#fffbeb', '#b45309'], // Amber/Yellow
+    ['#059669', '#10b981', '#6ee7b7', '#ecfdf5', '#d1fae5', '#047857'], // Emerald/Green
+    ['#db2777', '#ec4899', '#f9a8d4', '#fdf2f8', '#fce7f3', '#be185d'], // Pink
+    ['#e11d48', '#f43f5e', '#fb7185', '#fff1f2', '#ffe4e6', '#be123c'], // Rose/Red
+  ];
+
   private readonly COMMON_STYLE = `
     :root {
       --card-bg: #fff; --text-color: #111827; --header-color: #111827;
@@ -293,7 +304,21 @@ export class Renderer {
     if (!words?.length) return '暂无数据可供渲染';
 
     const wordListJson = JSON.stringify(words);
-    const colorPalette = ['#2c5b7a', '#3a8fb7', '#64b9cc', '#97d8c4', '#ccece6', '#7f8c8d'];
+    const selectedPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
+
+    let weightFactor = 64;
+    const count = words.length;
+    if (count <= 16) {
+      weightFactor = 48;
+    } else if (count <= 48) {
+      weightFactor = 36;
+    } else if (count <= 96) {
+      weightFactor = 24;
+    } else if (count <= 192) {
+      weightFactor = 20;
+    } else {
+      weightFactor = 12;
+    }
 
     const cardHtml = `
       <div class="container">
@@ -305,19 +330,19 @@ export class Renderer {
         <div id="wordcloud-container" style="width: 800px; height: 600px; margin: auto;"></div>
         <script>${wordCloudScript}</script>
         <script>
-          const palette = ${JSON.stringify(colorPalette)};
+          const palette = ${JSON.stringify(selectedPalette)};
           WordCloud(document.getElementById('wordcloud-container'), {
             list: ${wordListJson},
             fontFamily: '"Noto Sans CJK SC", "Helvetica Neue", "Arial", sans-serif',
-            weightFactor: (size) => Math.log(size) * 18,
-            color: (word, weight) => palette[weight % palette.length],
+            weightFactor: (size) => Math.log(size) * ${weightFactor},
+            color: (word, weight, fontSize, distance, theta) => {
+              return palette[Math.floor(Math.random() * palette.length)];
+            },
             backgroundColor: 'transparent',
-            shape: 'square',
-            ellipticity: 0.6,
             gridSize: 8,
-            rotateRatio: 0.3,
-            minRotation: -Math.PI / 6,
-            maxRotation: Math.PI / 6,
+            rotateRatio: 1,
+            minRotation: -Math.PI / 4,
+            maxRotation: Math.PI / 4,
             shuffle: true,
           });
         </script>
