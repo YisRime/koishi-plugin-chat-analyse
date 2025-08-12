@@ -41,10 +41,8 @@ export class WhoAt {
           const userInfoMap = new Map(users.map(u => [u.uid, { name: u.userName, id: u.userId }]));
           const messageElements = records.map(record => {
             const senderInfo = userInfoMap.get(record.uid);
-            return h('message', {}, [
-              h('author', { userId: senderInfo.id, nickname: senderInfo.name }),
-              h.text(record.content)
-            ]);
+            const author = h('author', { id: senderInfo.id, name: senderInfo.name });
+            return h('message', {}, [ author, h.text(record.content) ]);
           });
           return h('message', { forward: true }, messageElements);
         } catch (error) {
