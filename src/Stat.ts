@@ -50,6 +50,7 @@ export class Stat {
 
     if (this.config.enableCmdStat) {
       cmd.subcommand('cmdstat', '命令统计')
+        .usage('查询命令统计，可指定查询范围，默认当前群组。')
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('separate', '-h 分离展示')
@@ -88,6 +89,7 @@ export class Stat {
 
     if (this.config.enableMsgStat) {
       cmd.subcommand('msgstat', '发言统计')
+        .usage('查询发言统计，可指定查询范围，默认当前群组。')
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('type', '-t <type:string> 指定类型')
@@ -112,6 +114,7 @@ export class Stat {
 
     if (this.config.enableRankStat) {
       cmd.subcommand('rankstat', '发言排行')
+        .usage('查询发言排行，可指定查询范围，默认当前群组。')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('type', '-t <type:string> 指定类型')
         .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
@@ -138,6 +141,7 @@ export class Stat {
 
     if (this.config.enableActivity) {
       cmd.subcommand('activity', '活跃统计')
+        .usage('查询活跃统计，可指定查询范围，默认当前群组。')
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('hours', '-h <hours:number> 指定偏移时长')

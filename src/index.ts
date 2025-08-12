@@ -38,7 +38,6 @@ export interface Config {
   atRetentionDays: number;
   rankRetentionDays: number;
   enableWordCloud: boolean;
-  enableVocabulary: boolean;
 }
 
 /** @description 插件的配置项定义 */
@@ -59,7 +58,6 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
     enableWordCloud: Schema.boolean().default(true).description('启用词云生成'),
-    enableVocabulary: Schema.boolean().default(true).description('启用词汇排行'),
   }).description('高级分析配置'),
 ]);
 
@@ -136,5 +134,5 @@ export function apply(ctx: Context, config: Config) {
   new Stat(ctx, config).registerCommands(analyse);
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
   if (config.enableDataIO) new Data(ctx).registerCommands(analyse);
-  if (config.enableOriRecord && (config.enableWordCloud || config.enableVocabulary)) new Analyse(ctx, config).registerCommands(analyse);
+  if (config.enableOriRecord && config.enableWordCloud) new Analyse(ctx, config).registerCommands(analyse);
 }

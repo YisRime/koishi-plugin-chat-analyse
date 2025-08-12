@@ -89,13 +89,13 @@ export class Data {
       });
 
     cmd.subcommand('.clear', '清除数据', { authority: 4 })
+      .usage(`清除指定统计数据，可精确控制清除范围。`)
       .option('table', '-t <table:string> 指定表名')
       .option('guild', '-g <guildId:string> 指定群组')
       .option('user', '-u <user:string> 指定用户')
       .option('days', '-d <days:number> 指定天数')
       .option('command', '-c <command:string> 指定命令')
       .option('all', '-a 清除全部')
-      .usage(`根据指定条件清理统计数据，可以组合多个选项以精确控制清除范围。`)
       .action(async ({ options }) => {
         if (Object.keys(options).length === 0) return '请指定清除条件';
         if (options.table && !ALL_TABLES.includes(options.table as keyof Tables)) return `表名 ${options.table} 无效`;
