@@ -117,7 +117,7 @@ export class Stat {
         .usage('查询发言排行，可指定查询范围，默认当前群组。')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('type', '-t <type:string> 指定类型')
-        .option('hours', '-t <hours:number> 指定时长', { fallback: 24 })
+        .option('hours', '-o <hours:number> 指定时长', { fallback: 24 })
         .option('all', '-a 全局')
         .action(createHandler(async (scope, options) => {
           const { hours, type } = options;
