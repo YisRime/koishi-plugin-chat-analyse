@@ -107,7 +107,6 @@ export class Renderer {
    */
   private async htmlToImage(fullHtmlContent: string): Promise<Buffer | null> {
     const page = await this.ctx.puppeteer.page();
-    page.on('console', msg => this.ctx.logger.info(`[Puppeteer Console] ${msg.text()}`));
     try {
       await page.setViewport({ width: 720, height: 1080, deviceScaleFactor: 2.0 });
       await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' });
@@ -121,7 +120,6 @@ export class Renderer {
       this.ctx.logger.error('图片渲染失败:', error);
       return null;
     } finally {
-      page.off('console', msg => this.ctx.logger.info(`[Puppeteer Console] ${msg.text()}`));
       await page.close().catch(e => this.ctx.logger.error('关闭页面失败:', e));
     }
   }

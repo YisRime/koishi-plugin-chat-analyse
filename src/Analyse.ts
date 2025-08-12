@@ -42,7 +42,7 @@ export class Analyse {
         .usage('基于聊天记录生成词云图，可指定范围，默认当前群组。')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('user', '-u <user:string> 指定用户')
-        .option('hours', '-h <hours:number> 指定时长', { fallback: 24 })
+        .option('hours', '-t <hours:number> 指定时长', { fallback: 24 })
         .option('all', '-a 全局')
         .action(async ({ session, options }) => {
           if (!this.jieba) return 'Jieba 分词服务未就绪';
