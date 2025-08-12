@@ -307,7 +307,7 @@ export class Renderer {
             list: ${wordListJson},
             gridSize: 16,
             weightFactor: (size) => Math.pow(size, 1.2) * 2.5,
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+            fontFamily: "'Noto Sans SC', sans-serif",
             color: 'random-dark',
             backgroundColor: 'transparent',
             rotateRatio: 0.5,
