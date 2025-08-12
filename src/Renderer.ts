@@ -308,14 +308,14 @@ export class Renderer {
 
     let weightFactor = 64;
     const count = words.length;
-    if (count <= 16) {
+    if (count <= 32) {
+      weightFactor = 64;
+    } else if (count <= 64) {
       weightFactor = 48;
-    } else if (count <= 48) {
-      weightFactor = 36;
-    } else if (count <= 96) {
+    } else if (count <= 128) {
+      weightFactor = 32;
+    } else if (count <= 256) {
       weightFactor = 24;
-    } else if (count <= 192) {
-      weightFactor = 20;
     } else {
       weightFactor = 12;
     }
@@ -334,7 +334,7 @@ export class Renderer {
           WordCloud(document.getElementById('wordcloud-container'), {
             list: ${wordListJson},
             fontFamily: '"Noto Sans CJK SC", "Helvetica Neue", "Arial", sans-serif',
-            weightFactor: (size) => Math.log(size) * ${weightFactor},
+            weightFactor: (size) => (Math.log(size) + 1) * ${weightFactor},
             color: (word, weight, fontSize, distance, theta) => {
               return palette[Math.floor(Math.random() * palette.length)];
             },
