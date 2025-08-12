@@ -92,7 +92,7 @@ export async function parseQueryScope(ctx: Context, session: Session, options: {
  * @description 根据查询范围和类型动态生成易于理解的图片标题。
  * @returns 生成的标题字符串。
  */
-export async function generateTitle(ctx: Context, scopeDesc: { guildId?: string, userId?: string }, options: { main: string; subtype?: string; timeRange?: number; }): Promise<string> {
+export async function generateTitle(ctx: Context, scopeDesc: { guildId?: string, userId?: string }, options: { main: string; subtype?: string; timeRange?: number; timeUnit?: '小时' | '天' }): Promise<string> {
     let guildName = '', userName = '', scopeText = '全局';
 
     if (scopeDesc.guildId) {
@@ -104,19 +104,21 @@ export async function generateTitle(ctx: Context, scopeDesc: { guildId?: string,
       userName = user?.userName || scopeDesc.userId;
     }
 
+    const timeText = options.timeRange ? `${options.timeRange}${options.timeUnit || '小时'}` : '';
     const typeText = options.subtype ? `“${options.subtype}”` : '';
     const mainText = options.main;
 
-    if (mainText.includes('排行')) {
-      scopeText = guildName || '全局';
-      return `${options.timeRange}小时${scopeText}${typeText}${mainText}`;
+    if (mainText.includes('排行') || mainText.includes('活跃')) {
+        scopeText = guildName || '全局';
+    } else {
+        if (userName && guildName) scopeText = `${guildName} ${userName}`;
+        else if (userName) scopeText = userName;
+        else if (guildName) scopeText = guildName;
     }
 
-    if (userName && guildName) scopeText = `${guildName} ${userName}`;
-    else if (userName) scopeText = userName;
-    else if (guildName) scopeText = guildName;
+    const suffix = mainText.includes('排行') ? '' : '统计';
 
-    return `${scopeText}${typeText}${mainText}统计`;
+    return `${timeText}${scopeText}${typeText}${mainText}${suffix}`;
 }
 
 /**

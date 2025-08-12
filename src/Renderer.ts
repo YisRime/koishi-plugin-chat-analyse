@@ -22,6 +22,7 @@ export interface CircadianChartData {
   time: Date;
   total: string | number;
   data: number[];
+  labels?: string[];
 }
 
 /**
@@ -240,17 +241,16 @@ export class Renderer {
    * @returns {Promise<string | Buffer[]>} - 成功时返回包含图片 Buffer 的数组，失败或无数据时返回提示字符串。
    */
   public async renderCircadianChart(data: CircadianChartData): Promise<string | Buffer[]> {
-    const { title, time, total, data: hourlyCounts } = data;
+    const { title, time, total, data: hourlyCounts, labels } = data;
     if (!hourlyCounts || hourlyCounts.every(c => c === 0)) return '暂无数据可供渲染';
 
     const maxCount = Math.max(...hourlyCounts, 1);
     const chartStyles = `
       .chart-container { display: flex; align-items: flex-end; gap: 4px; height: 180px; padding: 30px 15px 10px; }
       .bar-wrapper { flex: 1; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
-      .bar-value { font-size: 11px; color: var(--sub-text-color); height: 16px; line-height: 16px; font-weight: 500; visibility: ${maxCount > 50 ? 'hidden' : 'visible'}; }
+      .bar-value { font-size: 11px; color: var(--sub-text-color); height: 16px; line-height: 16px; font-weight: 500; }
       .bar-container { flex-grow: 1; display: flex; align-items: flex-end; width: 100%; }
       .bar { width: 100%; background-color: var(--accent-color); opacity: .7; border-radius: 3px 3px 0 0; transition: height .3s ease-out; }
-      .bar.peak { opacity: 1; background-color: var(--gold); }
       .bar-label { font-size: 10px; color: var(--sub-text-color); margin-top: 4px; height: 12px; }
     `;
 
@@ -266,9 +266,9 @@ export class Renderer {
             <div class="bar-wrapper">
               <div class="bar-value">${count > 0 ? count : ''}</div>
               <div class="bar-container">
-                <div class="bar ${count === maxCount ? 'peak' : ''}" style="height: ${(count / maxCount) * 100}%;"></div>
+                <div class="bar" style="height: ${(count / maxCount) * 100}%;"></div>
               </div>
-              <div class="bar-label">${hour}</div>
+              <div class="bar-label">${labels ? labels[hour] : hour}</div>
             </div>`).join('')
           }
         </div>

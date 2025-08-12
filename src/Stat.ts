@@ -140,20 +140,82 @@ export class Stat {
       cmd.subcommand('activity', '活跃统计')
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
+        .option('hours', '-h <hours:number> 指定偏移时长')
         .option('all', '-a 全局')
-        .action(createHandler(async (scope) => {
-          const hourlyStats = await this.ctx.database.select('analyse_rank').where({ uid: { $in: scope.uids } }).groupBy(['timestamp'], { count: row => $.sum(row.count) }).execute();
-          if (hourlyStats.length === 0) return '暂无统计数据';
+        .option('days', '-d 切换至天数')
+        .action(createHandler(async (scope, options) => {
+          const { days, hours } = options;
 
-          const hourlyCounts = Array(24).fill(0);
-          let totalMessages = 0;
-          hourlyStats.forEach(stat => {
-            hourlyCounts[stat.timestamp.getHours()] += stat.count;
-            totalMessages += stat.count;
-          });
+          if (days) {
+            const timeRangeInDays = 24;
+            const since = new Date(Date.now() - timeRangeInDays * Time.day);
+            const stats = await this.ctx.database.select('analyse_rank')
+              .where({ uid: { $in: scope.uids }, timestamp: { $gte: since } })
+              .project(['timestamp', 'count'])
+              .execute();
 
-          const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '活跃' });
-          return this.renderer.renderCircadianChart({ title, time: new Date(), total: totalMessages, data: hourlyCounts });
+            if (stats.length === 0) return '暂无统计数据';
+
+            const startOfToday = new Date();
+            startOfToday.setHours(0, 0, 0, 0);
+            const dailyCounts = Array(timeRangeInDays).fill(0);
+            const dayLabels = Array(timeRangeInDays).fill('');
+
+            for (let i = 0; i < timeRangeInDays; i++) {
+              const d = new Date(startOfToday.getTime() - i * Time.day);
+              dayLabels[timeRangeInDays - 1 - i] = String(d.getDate());
+            }
+
+            stats.forEach(stat => {
+              const statDayStart = new Date(stat.timestamp);
+              statDayStart.setHours(0, 0, 0, 0);
+              const daysAgo = Math.round((startOfToday.getTime() - statDayStart.getTime()) / Time.day);
+
+              if (daysAgo >= 0 && daysAgo < timeRangeInDays) {
+                const index = timeRangeInDays - 1 - daysAgo;
+                dailyCounts[index] += stat.count;
+              }
+            });
+            const totalMessages = dailyCounts.reduce((a, b) => a + b, 0);
+
+            const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '活跃', timeRange: timeRangeInDays, timeUnit: '天' });
+            return this.renderer.renderCircadianChart({ title, time: new Date(), total: totalMessages, data: dailyCounts, labels: dayLabels });
+
+          } else {
+            const timeWindowHours = 24;
+            const offsetHours = typeof hours === 'number' ? hours : 0;
+
+            const now = new Date();
+            const until = new Date(now.getTime() - offsetHours * Time.hour);
+            const since = new Date(until.getTime() - timeWindowHours * Time.hour);
+
+            const hourlyStats = await this.ctx.database.select('analyse_rank')
+              .where({ uid: { $in: scope.uids }, timestamp: { $gte: since, $lt: until } })
+              .groupBy('timestamp', { count: row => $.sum(row.count) })
+              .execute();
+
+            if (hourlyStats.length === 0) return '暂无统计数据';
+
+            const processedCounts = Array(timeWindowHours).fill(0);
+            const hourLabels = Array(timeWindowHours).fill('');
+
+            for (let i = 0; i < timeWindowHours; i++) {
+              const d = new Date(until.getTime() - (i + 1) * Time.hour);
+              hourLabels[timeWindowHours - 1 - i] = String(d.getHours());
+            }
+
+            hourlyStats.forEach(stat => {
+              const hoursBeforeUntil = Math.floor((until.getTime() - stat.timestamp.getTime()) / Time.hour);
+              if (hoursBeforeUntil >= 0 && hoursBeforeUntil < timeWindowHours) {
+                const index = timeWindowHours - 1 - hoursBeforeUntil;
+                processedCounts[index] += stat.count;
+              }
+            });
+            const totalMessages = processedCounts.reduce((a, b) => a + b, 0);
+
+            const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '活跃', timeRange: timeWindowHours, timeUnit: '小时' });
+            return this.renderer.renderCircadianChart({ title, time: new Date(), total: totalMessages, data: processedCounts, labels: hourLabels });
+          }
         }));
     }
   }
