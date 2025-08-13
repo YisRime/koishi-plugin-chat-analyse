@@ -308,8 +308,8 @@ export class Renderer {
     const weights = words.map(w => w[1]);
     const maxWeight = Math.max(...weights, 1);
     const minWeight = Math.min(...weights);
-    const MAX_FONT_SIZE = 64;
-    const MIN_FONT_SIZE = 4;
+    const MAX_FONT_SIZE = 96;
+    const MIN_FONT_SIZE = 8;
 
     const cardHtml = `
       <div class="container">
@@ -334,7 +334,9 @@ export class Renderer {
               return palette[Math.floor(Math.random() * palette.length)];
             },
             backgroundColor: 'transparent',
+            clearCanvas: true,
             shape: 'square',
+            ellipticity: 1,
             gridSize: 1,
             rotateRatio: 1,
             minRotation: -Math.PI / 4,

@@ -71,7 +71,7 @@ export class Analyse {
             if (!words.length) return '暂无有效词语';
 
             const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
-            const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 512);
+            const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
 
             const topWordsPreview = wordList.slice(0, 10).map(item => item[0]).join(', ');
             session.send(`正在生成词云，热门词汇：${topWordsPreview}...`);

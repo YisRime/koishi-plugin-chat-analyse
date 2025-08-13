@@ -1067,7 +1067,7 @@ if (!window.clearImmediate) {
             var ctx = el.getContext('2d')
             ctx.fillStyle = settings.backgroundColor
             ctx.clearRect(0, 0, ngx * (g + 1), ngy * (g + 1))
-            // ctx.fillRect(0, 0, ngx * (g + 1), ngy * (g + 1)) // 删除背景色填充以避免 Docker 环境下出现问题
+            ctx.fillRect(0, 0, ngx * (g + 1), ngy * (g + 1))
           } else {
             el.textContent = ''
             el.style.backgroundColor = settings.backgroundColor
