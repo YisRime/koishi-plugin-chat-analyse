@@ -28,7 +28,7 @@ export class WhoAt {
    */
   public registerCommand(cmd: Command) {
     cmd.subcommand('whoatme', '谁提及我')
-      .usage('查看最近提及我的消息，不分群组。')
+      .usage('查看最近提及我的消息，查看后自动删除。')
       .action(async ({ session }) => {
         if (!session.userId) return '无法获取用户信息';
         try {
@@ -44,6 +44,10 @@ export class WhoAt {
             const author = h('author', { id: senderInfo.id, name: senderInfo.name });
             return h('message', {}, [ author, h.text(record.content) ]);
           });
+
+          const recordIdsToDelete = records.map(r => r.id);
+          await this.ctx.database.remove('analyse_at', { id: { $in: recordIdsToDelete } });
+
           return h('message', { forward: true }, messageElements);
         } catch (error) {
           this.ctx.logger.error('查询提及记录失败:', error);

@@ -30,19 +30,17 @@ export class Stat {
    * @param cmd - 主命令实例。
    */
   public registerCommands(cmd: Command) {
-    const createHandler = (handler: (scope: { uids?: number[]; error?: string; scopeDesc: { guildId?: string; userId?: string } }, options: any) => Promise<string | Buffer[]>) => {
+    const createHandler = (handler: (scope: { uids?: number[]; error?: string; scopeDesc: { guildId?: string; userId?: string } }, options: any) => Promise<string | AsyncGenerator<Buffer>>) => {
       return async ({ session, options }) => {
         const scope = await parseQueryScope(this.ctx, session, options);
         if (scope.error) return scope.error;
         try {
           const result = await handler(scope, options);
           if (typeof result === 'string') return result;
-          if (Array.isArray(result) && result.length > 0) {
-            for (const buffer of result) await session.sendQueued(h.image(buffer, 'image/png'));
-            return;
-          }
+          for await (const buffer of result) await session.send(h.image(buffer, 'image/png'));
+
         } catch (error) {
-          this.ctx.logger.error('渲染统计图片失败:', error);
+          this.ctx.logger.error('图片渲染失败:', error);
           return '图片渲染失败';
         }
       };

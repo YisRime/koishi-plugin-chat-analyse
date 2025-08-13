@@ -45,41 +45,44 @@ export class Analyse {
         .option('hours', '-t <hours:number> 指定时长', { fallback: 24 })
         .option('all', '-a 全局')
         .action(async ({ session, options }) => {
-          if (!this.jieba) return 'Jieba 分词服务未就绪';
+          try {
+            if (!this.jieba) return 'Jieba 分词服务未就绪';
 
-          const scope = await parseQueryScope(this.ctx, session, options);
-          if (scope.error) return scope.error;
+            const scope = await parseQueryScope(this.ctx, session, options);
+            if (scope.error) return scope.error;
 
-          scope.uids ??= (await this.ctx.database.get('analyse_user', {}, ['uid'])).map(u => u.uid);
-          if (!scope.uids?.length) return '暂无用户数据';
+            scope.uids ??= (await this.ctx.database.get('analyse_user', {}, ['uid'])).map(u => u.uid);
+            if (!scope.uids?.length) return '暂无用户数据';
 
-          const since = new Date(Date.now() - options.hours * Time.hour);
-          const records = await this.ctx.database.get('analyse_cache', { uid: { $in: scope.uids }, timestamp: { $gte: since } }, ['content']);
+            const since = new Date(Date.now() - options.hours * Time.hour);
+            const records = await this.ctx.database.get('analyse_cache', { uid: { $in: scope.uids }, timestamp: { $gte: since } }, ['content']);
 
-          if (!records.length) return '暂无统计数据';
+            if (!records.length) return '暂无统计数据';
 
-          const exclusionRegex = /\[(face|file|forward|img|gif|audio|video|json|rps|markdown|dice|at:.*?)\]/g;
-          const allText = records.map(r => r.content.replace(exclusionRegex, '')).join(' ');
+            const exclusionRegex = /\[(face|file|forward|img|gif|audio|video|json|rps|markdown|dice|at:.*?)\]/g;
+            const allText = records.map(r => r.content.replace(exclusionRegex, '')).join(' ');
 
-          const words = this.jieba.cut(allText).filter(w => {
-            if (w.trim().length <= 1) return false; // 过滤掉单个字
-            if (/^\d+$/.test(w)) return false;      // 过滤掉纯数字
-            return true;
-          });
+            const words = this.jieba.cut(allText).filter(w => {
+              if (w.trim().length <= 1) return false; // 过滤掉单个字
+              if (/^\d+$/.test(w)) return false;      // 过滤掉纯数字
+              return true;
+            });
 
-          if (!words.length) return '暂无有效词语';
+            if (!words.length) return '暂无有效词语';
 
-          const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
-          const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
+            const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
+            const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 512);
 
-          session.send(`正在生成词云:${wordList.slice(0, 10)}`);
+            const topWordsPreview = wordList.slice(0, 10).map(item => item[0]).join(', ');
+            session.send(`正在生成词云，热门词汇：${topWordsPreview}...`);
 
-          const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云' });
-          const result = await this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
+            const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云' });
+            const imageGenerator = this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
+            for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));
 
-          if (typeof result === 'string') return result;
-          if (Array.isArray(result) && result.length > 0) {
-            for (const buffer of result) await session.sendQueued(h.image(buffer, 'image/png'));
+          } catch (error) {
+            this.ctx.logger.error('生成词云图片失败:', error);
+            return '图片渲染失败';
           }
         });
     }

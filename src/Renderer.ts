@@ -33,13 +33,20 @@ export interface CircadianChartData {
 export class Renderer {
 
   private readonly COLOR_PALETTES = [
-    ['#2c5b7a', '#3a8fb7', '#64b9cc', '#97d8c4', '#ccece6', '#7f8c8d'], // Blue/Teal
-    ['#d946ef', '#a21caf', '#86198f', '#fdf4ff', '#faf5ff', '#f5d0fe'], // Fuchsia/Purple
-    ['#4f46e5', '#6366f1', '#a5b4fc', '#e0e7ff', '#eef2ff', '#3730a3'], // Indigo
-    ['#d97706', '#f59e0b', '#fcd34d', '#fefce8', '#fffbeb', '#b45309'], // Amber/Yellow
-    ['#059669', '#10b981', '#6ee7b7', '#ecfdf5', '#d1fae5', '#047857'], // Emerald/Green
-    ['#db2777', '#ec4899', '#f9a8d4', '#fdf2f8', '#fce7f3', '#be185d'], // Pink
-    ['#e11d48', '#f43f5e', '#fb7185', '#fff1f2', '#ffe4e6', '#be123c'], // Rose/Red
+    // 1. Oceanic: 深邃的海洋蓝与青色系，沉稳专业
+    ['#003f5c', '#2f4b7c', '#0077b6', '#023e8a', '#2a6f97', '#0096c7'],
+    // 2. Sunset: 充满活力的日落色系，温暖而醒目
+    ['#c1121f', '#d9501e', '#e36414', '#9a031e', '#5f0f40', '#fb8500'],
+    // 3. Forest: 茂密森林的绿色系，自然且舒适
+    ['#1b4332', '#2d6a4f', '#40916c', '#52b788', '#283618', '#081c15'],
+    // 4. Grape: 浓郁的葡萄与浆果色系，高贵而神秘
+    ['#4a0072', '#6a00a8', '#810099', '#c71585', '#58004f', '#3d0c4c'],
+    // 5. Candy: 甜美的糖果色系，活泼有趣
+    ['#e63946', '#f77f00', '#2a9d8f', '#457b9d', '#8d99ae', '#d62828'],
+    // 6. Retro: 复古风格色盘，兼具沉稳与活力
+    ['#264653', '#2a9d8f', '#e76f51', '#f4a261', '#bc6c25', '#a56c03'],
+    // 7. Midnight: 深邃的午夜色系，搭配亮色点缀，对比强烈
+    ['#03045e', '#0077b6', '#00b4d8', '#d00000', '#e85d04', '#212529'],
   ];
 
   private readonly COMMON_STYLE = `
@@ -158,17 +165,14 @@ export class Renderer {
   /**
    * @public
    * @method renderList
-   * @description 将表格型数据渲染成一个或多个列表形式的图片。如果数据过多，会自动进行分页渲染。
+   * @description 将表格型数据渲染成列表形式的图片。如果数据过多，会通过异步生成器逐个产出图片。
    * @param {ListRenderData} data - 包含标题、时间、总计和列表数据的对象。
    * @param {string[]} [headers] - （可选）列表的表头数组。
-   * @returns {Promise<string | Buffer[]>} - 成功时返回包含图片 Buffer 的数组，失败或无数据时返回提示字符串。
+   * @returns {AsyncGenerator<Buffer>} - 一个异步生成器，每次迭代产出一张图片的 Buffer。
    */
-  public async renderList(data: ListRenderData, headers?: string[]): Promise<string | Buffer[]> {
+  public async *renderList(data: ListRenderData, headers?: string[]): AsyncGenerator<Buffer> {
     const { title, time, list } = data;
-    if (!list?.length) return '暂无数据可供渲染';
-
     const CHUNK_SIZE = 100;
-    const imageBuffers: Buffer[] = [];
     const totalItems = list.length;
     const countHeaderIndex = headers?.findIndex(h => ['总计发言', '条数', '次数', '数量'].includes(h)) ?? -1;
     const totalCount = data.total || (countHeaderIndex > -1 ? list.reduce((sum, row) => sum + (Number(row[countHeaderIndex]) || 0), 0) : totalItems);
@@ -239,23 +243,19 @@ export class Renderer {
 
       const fullHtml = this.generateFullHtml(cardHtml, listStyles);
       const imageBuffer = await this.htmlToImage(fullHtml);
-      if (imageBuffer) imageBuffers.push(imageBuffer);
+      if (imageBuffer) yield imageBuffer;
     }
-
-    return imageBuffers.length > 0 ? imageBuffers : '图片渲染失败';
   }
 
   /**
    * @public
    * @method renderCircadianChart
-   * @description 将 24 小时制的活跃度数据渲染成一张柱状图图片。
+   * @description 将 24 小时制的活跃度数据渲染成一张柱状图图片。通过异步生成器产出图片。
    * @param {CircadianChartData} data - 包含标题、时间、总计和 24 小时数据数组的对象。
-   * @returns {Promise<string | Buffer[]>} - 成功时返回包含图片 Buffer 的数组，失败或无数据时返回提示字符串。
+   * @returns {AsyncGenerator<Buffer>} - 一个异步生成器，产出渲染后的图片 Buffer。
    */
-  public async renderCircadianChart(data: CircadianChartData): Promise<string | Buffer[]> {
+  public async *renderCircadianChart(data: CircadianChartData): AsyncGenerator<Buffer> {
     const { title, time, total, data: hourlyCounts, labels } = data;
-    if (!hourlyCounts || hourlyCounts.every(c => c === 0)) return '暂无数据可供渲染';
-
     const maxCount = Math.max(...hourlyCounts, 1);
     const chartStyles = `
       .chart-container { display: flex; align-items: flex-end; gap: 4px; height: 180px; padding: 30px 15px 10px; }
@@ -288,8 +288,7 @@ export class Renderer {
 
     const fullHtml = this.generateFullHtml(cardHtml, chartStyles);
     const imageBuffer = await this.htmlToImage(fullHtml);
-
-    return imageBuffer ? [imageBuffer] : '图片渲染失败';
+    if (imageBuffer) yield imageBuffer;
   }
 
   /**
@@ -297,28 +296,24 @@ export class Renderer {
    * @method renderWordCloud
    * @description 将词频数据渲染成一张词云图片，使用 Puppeteer 和 wordcloud2.js。
    * @param {WordCloudData} data - 包含标题、时间和词汇列表的对象。
-   * @returns {Promise<string | Buffer[]>} - 成功时返回图片 Buffer 数组，否则返回提示。
+   * @returns {AsyncGenerator<Buffer>} - 一个异步生成器，产出渲染后的图片 Buffer。
    */
-  public async renderWordCloud(data: WordCloudData): Promise<string | Buffer[]> {
+  public async *renderWordCloud(data: WordCloudData): AsyncGenerator<Buffer> {
     const { title, time, words } = data;
     if (!words?.length) return '暂无数据可供渲染';
 
-    const wordListJson = JSON.stringify(words);
+    const wordsJson = JSON.stringify(words);
     const selectedPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
 
-    let weightFactor = 64;
     const count = words.length;
-    if (count <= 32) {
-      weightFactor = 64;
-    } else if (count <= 64) {
-      weightFactor = 48;
-    } else if (count <= 128) {
-      weightFactor = 32;
-    } else if (count <= 256) {
-      weightFactor = 24;
-    } else {
-      weightFactor = 12;
-    }
+    const minWords = 64;   // 开始缩小字体的词数
+    const maxWords = 512;  // 字体缩至最小的词数
+    const maxWeight = 32;  // 最大 weightFactor
+    const minWeight = 4;  // 最小 weightFactor
+
+    const progress = (count - minWords) / (maxWords - minWords);
+    const clampedProgress = Math.max(0, Math.min(1, progress));
+    const dynamicWeightFactor = maxWeight - (maxWeight - minWeight) * clampedProgress;
 
     const cardHtml = `
       <div class="container">
@@ -332,16 +327,16 @@ export class Renderer {
         <script>
           const palette = ${JSON.stringify(selectedPalette)};
           WordCloud(document.getElementById('wordcloud-container'), {
-            list: ${wordListJson},
+            list: ${wordsJson},
             fontFamily: '"Noto Sans CJK SC", "Arial", sans-serif',
-            weightFactor: (size) => (Math.log(size) + 1) * ${weightFactor},
+            weightFactor: (size) => Math.max((Math.log(size) + 1) * ${dynamicWeightFactor}, 8),
             color: (word, weight, fontSize, distance, theta) => {
               return palette[Math.floor(Math.random() * palette.length)];
             },
             backgroundColor: 'transparent',
             shape: 'square',
             ellipticity: 0.6,
-            gridSize: 8,
+            gridSize: 2,
             rotateRatio: 1,
             minRotation: -Math.PI / 4,
             maxRotation: Math.PI / 4,
@@ -362,6 +357,6 @@ export class Renderer {
       </html>`;
 
     const imageBuffer = await this.htmlToImage(fullHtml);
-    return imageBuffer ? [imageBuffer] : '图片渲染失败';
+    if (imageBuffer) yield imageBuffer;
   }
 }
