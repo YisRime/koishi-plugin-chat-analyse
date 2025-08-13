@@ -304,12 +304,14 @@ export class Renderer {
 
     const wordsJson = JSON.stringify(words);
     const selectedPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
+    const shapes = ['circle', 'cardioid', 'diamond', 'triangle-forward', 'triangle', 'pentagon', 'star', 'square'];
+    const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
 
     const weights = words.map(w => w[1]);
     const maxWeight = Math.max(...weights, 1);
     const minWeight = Math.min(...weights);
-    const MAX_FONT_SIZE = 96;
-    const MIN_FONT_SIZE = 8;
+    const MAX_FONT_SIZE = 64;
+    const MIN_FONT_SIZE = 4;
 
     const cardHtml = `
       <div class="container">
@@ -323,7 +325,6 @@ export class Renderer {
         <script>
           const palette = ${JSON.stringify(selectedPalette)};
           WordCloud(document.getElementById('wordcloud-container'), {
-            list: ${wordsJson},
             fontFamily: '"Noto Sans CJK SC", "Arial", sans-serif',
             weightFactor: (size) => {
               if (${maxWeight} === ${minWeight}) return (${MIN_FONT_SIZE} + ${MAX_FONT_SIZE}) / 2;
@@ -333,14 +334,14 @@ export class Renderer {
             color: (word, weight, fontSize, distance, theta) => {
               return palette[Math.floor(Math.random() * palette.length)];
             },
-            backgroundColor: 'transparent',
-            clearCanvas: true,
-            shape: 'square',
+            list: ${wordsJson},
+            shape: '${randomShape}',
             ellipticity: 1,
-            gridSize: 1,
             rotateRatio: 1,
             minRotation: -Math.PI / 4,
             maxRotation: Math.PI / 4,
+            backgroundColor: 'transparent',
+            clearCanvas: true,
             shuffle: true,
           });
         </script>
