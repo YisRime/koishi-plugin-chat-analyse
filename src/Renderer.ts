@@ -318,7 +318,7 @@ export class Renderer {
           <h1 class="title-text">${title}</h1>
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
-        <div id="wordcloud-container" style="width: 800px; height: 600px; margin: auto;"></div>
+        <div id="wordcloud-container" style="width: 512px; height: 512px; margin: auto;"></div>
         <script>${wordCloudScript}</script>
         <script>
           const palette = ${JSON.stringify(selectedPalette)};
@@ -335,7 +335,6 @@ export class Renderer {
             },
             backgroundColor: 'transparent',
             shape: 'square',
-            ellipticity: 0.6,
             gridSize: 1,
             rotateRatio: 1,
             minRotation: -Math.PI / 4,
