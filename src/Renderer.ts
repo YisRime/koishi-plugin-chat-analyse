@@ -300,20 +300,16 @@ export class Renderer {
    */
   public async *renderWordCloud(data: WordCloudData): AsyncGenerator<Buffer> {
     const { title, time, words } = data;
-    if (!words?.length) return '暂无数据可供渲染';
+    if (!words?.length) return;
 
     const wordsJson = JSON.stringify(words);
     const selectedPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
 
-    const count = words.length;
-    const minWords = 64;   // 开始缩小字体的词数
-    const maxWords = 512;  // 字体缩至最小的词数
-    const maxWeight = 32;  // 最大 weightFactor
-    const minWeight = 4;  // 最小 weightFactor
-
-    const progress = (count - minWords) / (maxWords - minWords);
-    const clampedProgress = Math.max(0, Math.min(1, progress));
-    const dynamicWeightFactor = maxWeight - (maxWeight - minWeight) * clampedProgress;
+    const weights = words.map(w => w[1]);
+    const maxWeight = Math.max(...weights, 1);
+    const minWeight = Math.min(...weights);
+    const MAX_FONT_SIZE = 64;
+    const MIN_FONT_SIZE = 4;
 
     const cardHtml = `
       <div class="container">
@@ -329,14 +325,18 @@ export class Renderer {
           WordCloud(document.getElementById('wordcloud-container'), {
             list: ${wordsJson},
             fontFamily: '"Noto Sans CJK SC", "Arial", sans-serif',
-            weightFactor: (size) => Math.max((Math.log(size) + 1) * ${dynamicWeightFactor}, 8),
+            weightFactor: (size) => {
+              if (${maxWeight} === ${minWeight}) return (${MIN_FONT_SIZE} + ${MAX_FONT_SIZE}) / 2;
+              const normalizedWeight = (size - ${minWeight}) / (${maxWeight} - ${minWeight});
+              return ${MIN_FONT_SIZE} + normalizedWeight * (${MAX_FONT_SIZE} - ${MIN_FONT_SIZE});
+            },
             color: (word, weight, fontSize, distance, theta) => {
               return palette[Math.floor(Math.random() * palette.length)];
             },
             backgroundColor: 'transparent',
             shape: 'square',
             ellipticity: 0.6,
-            gridSize: 2,
+            gridSize: 1,
             rotateRatio: 1,
             minRotation: -Math.PI / 4,
             maxRotation: Math.PI / 4,
