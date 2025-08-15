@@ -304,8 +304,6 @@ export class Renderer {
 
     const wordsJson = JSON.stringify(words);
     const selectedPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
-    const shapes = ['circle', 'cardioid', 'diamond', 'triangle-forward', 'triangle', 'pentagon', 'star', 'square'];
-    const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
 
     const weights = words.map(w => w[1]);
     const maxWeight = Math.max(...weights, 1);
@@ -335,7 +333,8 @@ export class Renderer {
               return palette[Math.floor(Math.random() * palette.length)];
             },
             list: ${wordsJson},
-            shape: '${randomShape}',
+            shape: 'square',
+            gridSize: 1,
             ellipticity: 1,
             rotateRatio: 1,
             minRotation: -Math.PI / 4,
