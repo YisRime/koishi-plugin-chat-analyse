@@ -88,7 +88,9 @@ export class Collector {
 
           let currentChannelName = this.channelCache.get(channelId);
           if (currentChannelName === undefined) {
-            const guild = await bot.getGuild(channelId).catch(() => null);
+            const guild = (bot.getGuild && typeof bot.getGuild === 'function')
+              ? await bot.getGuild(channelId).catch(() => null)
+              : null;
             currentChannelName = guild?.name ?? '';
             if (currentChannelName) this.channelCache.set(channelId, currentChannelName);
           }
