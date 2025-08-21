@@ -266,7 +266,7 @@ export class Renderer {
     });
 
     const width = 600, height = 320;
-    const padding = { top: 20, right: 30, bottom: 80, left: 40 };
+    const padding = { top: 20, right: 20, bottom: 70, left: 20 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
     const maxVal = Math.max(1, ...series.flatMap(s => s.data));
