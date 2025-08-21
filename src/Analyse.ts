@@ -109,86 +109,96 @@ export class Analyse {
 
     if (this.config.enableSimilarActivity) {
       cmd.subcommand('simiactive', '相似活跃分析')
-        .usage('分析你和群友的活跃度，找出谁和你的活跃度最相似。')
+        .usage('分析你和群友的活跃规律，找出谁和你的作息最相似。')
         .option('hours', '-n <hours:number> 指定时长', { fallback: 24 })
         .option('separate', '-p 分时分析')
         .action(async ({ session, options }) => {
-            if (!session.guildId) return '请在群组中使用此命令';
-            try {
-                const until = new Date();
-                let since: Date;
-                let points: number;
-                let title: string;
-                let labels: string[];
-                let daysToAnalyze = 0;
+          if (!session.guildId) return '请在群组中使用此命令';
 
-                if (options.separate) {
-                    points = options.hours;
-                    since = new Date(until.getTime() - options.hours * Time.hour);
-                    title = `${options.hours}小时相似活跃分析`;
-                    labels = Array.from({ length: points }, (_, i) => String(new Date(until.getTime() - (points - 1 - i) * Time.hour).getHours()));
-                } else {
-                    daysToAnalyze = Math.floor(options.hours / 24);
-                    if (daysToAnalyze < 1) return '请指定至少 24 小时时长';
-                    const analysisDurationHours = daysToAnalyze * 24;
-                    since = new Date(until.getTime() - analysisDurationHours * Time.hour);
-                    points = 24;
-                    title = `${daysToAnalyze}天相似活跃分析`;
-                    labels = Array.from({ length: 24 }, (_, i) => String(i));
-                }
+          try {
+            const guildUsers = await this.ctx.database.get('analyse_user', { channelId: session.guildId });
+            if (guildUsers.length < 2) return '暂无用户数据';
+            const selfUser = guildUsers.find(u => u.userId === session.userId);
+            const guildUserUids = guildUsers.map(u => u.uid);
+            const uidToNameMap = new Map(guildUsers.map(u => [u.uid, u.userName]));
 
-                const guildUsers = await this.ctx.database.get('analyse_user', { channelId: session.guildId });
-                if (guildUsers.length < 2) return '暂无用户数据';
+            const until = new Date();
+            let analysisConfig: {
+              title: string;
+              since: Date;
+              points: number;
+              labels: string[];
+              getIndex: (timestamp: Date) => number;
+              reorderVector: (vec: number[]) => number[];
+            };
 
-                const selfUser = guildUsers.find(u => u.userId === session.userId);
-                const guildUserUids = guildUsers.map(u => u.uid);
-                const uidToNameMap = new Map(guildUsers.map(u => [u.uid, u.userName]));
+            if (options.separate) {
+              const { hours } = options;
+              analysisConfig = {
+                points: hours,
+                since: new Date(until.getTime() - hours * Time.hour),
+                title: `${hours}小时相似活跃分析`,
+                labels: Array.from({ length: hours }, (_, i) => String(new Date(until.getTime() - (hours - 1 - i) * Time.hour).getHours())),
+                getIndex: (timestamp) => {
+                  const diff = until.getTime() - timestamp.getTime();
+                  const index = hours - 1 - Math.floor(diff / Time.hour);
+                  return (index >= 0 && index < hours) ? index : -1;
+                },
+                reorderVector: (vec) => vec,
+              };
+            } else {
+              const daysToAnalyse = Math.floor(options.hours / 24);
+              if (daysToAnalyse < 1) return '分析时长请指定至少 1 天';
 
-                const records = await this.ctx.database.get('analyse_rank', { uid: { $in: guildUserUids }, timestamp: { $gte: since } });
-                if (records.length === 0) return '暂无统计数据';
+              const hoursToAnalyse = daysToAnalyse * 24;
+              const currentHour = until.getHours();
+              const labels = Array.from({ length: 24 }, (_, i) => String((currentHour - (23 - i) + 24) % 24));
 
-                const activityVectors = new Map<number, number[]>();
-                guildUserUids.forEach(uid => activityVectors.set(uid, Array(points).fill(0)));
-
-                records.forEach(stat => {
-                    let index: number;
-                    if (options.separate) {
-                        const diff = until.getTime() - stat.timestamp.getTime();
-                        index = points - 1 - Math.floor(diff / Time.hour);
-                    } else {
-                        index = stat.timestamp.getHours();
-                    }
-                    if (index >= 0 && index < points) {
-                        activityVectors.get(stat.uid)[index] += stat.count;
-                    }
-                });
-
-                if (!options.separate && daysToAnalyze > 0) activityVectors.forEach((vector) => { for (let i = 0; i < vector.length; i++) vector[i] = vector[i] / daysToAnalyze; });
-
-                const selfVector = activityVectors.get(selfUser.uid);
-                if (!selfVector || selfVector.every(v => v === 0)) return '暂无统计数据';
-
-                const similarities = guildUserUids
-                    .filter(uid => uid !== selfUser.uid && !activityVectors.get(uid).every(v => v === 0))
-                    .map(uid => ({ uid, score: cosineSimilarity(selfVector, activityVectors.get(uid)) }))
-                    .sort((a, b) => b.score - a.score);
-
-                if (similarities.length === 0) return '暂无相似用户';
-
-                const top5 = similarities.slice(0, 5);
-                const series = [ { name: uidToNameMap.get(selfUser.uid) || '您', data: selfVector } ];
-                top5.forEach(sim => {
-                    const name = uidToNameMap.get(sim.uid) || `UID ${sim.uid}`;
-                    series.push({ name: `${name} (${(sim.score * 100).toFixed(1)}%)`, data: activityVectors.get(sim.uid) });
-                });
-
-                const imageGenerator = this.renderer.renderLineChart({ title, time: new Date(), series, labels });
-                for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));
-
-            } catch (error) {
-                this.ctx.logger.error('生成作息分析图片失败:', error);
-                return '图片渲染失败';
+              analysisConfig = {
+                points: 24,
+                since: new Date(until.getTime() - hoursToAnalyse * Time.hour),
+                title: `${daysToAnalyse}天相似活跃分析`,
+                labels: labels,
+                getIndex: (timestamp) => timestamp.getHours(),
+                reorderVector: (vector) => labels.map(label => vector[parseInt(label)]),
+              };
             }
+
+            const records = await this.ctx.database.get('analyse_rank', { uid: { $in: guildUserUids }, timestamp: { $gte: analysisConfig.since } });
+            if (!records.length) return '暂无统计数据';
+
+            const activityVectors = new Map<number, number[]>(guildUserUids.map(uid => [uid, Array(analysisConfig.points).fill(0)]));
+            for (const record of records) {
+              const index = analysisConfig.getIndex(record.timestamp);
+              if (index !== -1) activityVectors.get(record.uid)[index] += record.count;
+            }
+
+            const selfVector = activityVectors.get(selfUser.uid);
+            const similarities = guildUserUids
+              .filter(uid => uid !== selfUser.uid && activityVectors.get(uid).some(v => v !== 0))
+              .map(uid => ({
+                uid,
+                score: cosineSimilarity(selfVector, activityVectors.get(uid))
+              }))
+              .sort((a, b) => b.score - a.score);
+
+            if (!similarities.length) return '暂无相似用户';
+
+            const top5 = similarities.slice(0, 5);
+            const series = [{ name: uidToNameMap.get(selfUser.uid) || '您', data: analysisConfig.reorderVector(selfVector) }];
+
+            for (const sim of top5) {
+              const name = uidToNameMap.get(sim.uid) || `UID ${sim.uid}`;
+              const data = analysisConfig.reorderVector(activityVectors.get(sim.uid));
+              series.push({ name: `${name} (${(sim.score * 100).toFixed(1)}%)`, data });
+            }
+
+            const imageGenerator = this.renderer.renderLineChart({ title: analysisConfig.title, time: new Date(), series, labels: analysisConfig.labels });
+            for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));
+          } catch (error) {
+            this.ctx.logger.error('生成作息分析图片失败:', error);
+            return '图片渲染失败';
+          }
         });
     }
   }
