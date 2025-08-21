@@ -15,15 +15,17 @@ export interface ListRenderData {
 }
 
 /**
- * @interface CircadianChartData
- * @description 定义了调用 `renderCircadianChart` 方法所需的数据结构。
+ * @interface LineChartData
+ * @description 定义了调用 `renderLineChart` 方法所需的数据结构，支持多组数据系列。
  */
-export interface CircadianChartData {
+export interface LineChartData {
   title: string;
   time: Date;
-  total: string | number;
-  data: number[];
-  labels?: string[];
+  series: {
+    name: string;
+    data: number[];
+  }[];
+  labels: string[];
 }
 
 /**
@@ -65,6 +67,7 @@ export class Renderer {
     .container {
       display: inline-block; background: var(--card-bg); border-radius: 12px;
       padding: 0; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,.05);
+      width: 600px;
     }
     .header {
       padding: 12px 16px;
@@ -249,43 +252,74 @@ export class Renderer {
 
   /**
    * @public
-   * @method renderCircadianChart
-   * @description 将 24 小时制的活跃度数据渲染成一张柱状图图片。通过异步生成器产出图片。
-   * @param {CircadianChartData} data - 包含标题、时间、总计和 24 小时数据数组的对象。
+   * @method renderLineChart
+   * @description 将时间序列数据（如活跃度）渲染成一张基于 SVG 的折线图。支持单组或多组数据进行对比。
+   * @param {LineChartData} data - 包含标题、时间、数据系列和标签的对象。
    * @returns {AsyncGenerator<Buffer>} - 一个异步生成器，产出渲染后的图片 Buffer。
    */
-  public async *renderCircadianChart(data: CircadianChartData): AsyncGenerator<Buffer> {
-    const { title, time, total, data: hourlyCounts, labels } = data;
-    const maxCount = Math.max(...hourlyCounts, 1);
-    const chartStyles = `
-      .chart-container { display: flex; align-items: flex-end; gap: 4px; height: 180px; padding: 30px 15px 10px; }
-      .bar-wrapper { flex: 1; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
-      .bar-value { font-size: 11px; color: var(--sub-text-color); height: 16px; line-height: 16px; font-weight: 500; }
-      .bar-container { flex-grow: 1; display: flex; align-items: flex-end; width: 100%; }
-      .bar { width: 100%; background-color: var(--accent-color); opacity: .7; border-radius: 3px 3px 0 0; transition: height .3s ease-out; }
-      .bar-label { font-size: 10px; color: var(--sub-text-color); margin-top: 4px; height: 12px; }
-    `;
+  public async *renderLineChart(data: LineChartData): AsyncGenerator<Buffer> {
+    const { title, time, series, labels } = data;
 
+    const width = 600, height = 320;
+    const padding = { top: 20, right: 20, bottom: 60, left: 40 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    const maxVal = Math.max(1, ...series.flatMap(s => s.data));
+    const yTickCount = 5;
+    const yTickValue = Math.ceil(maxVal / yTickCount);
+    const yAxisMax = yTickValue * yTickCount;
+
+    const getX = (index: number) => padding.left + (index / (labels.length - 1)) * chartWidth;
+    const getY = (value: number) => padding.top + chartHeight - (value / yAxisMax) * chartHeight;
+
+    let svgElements = '';
+
+    for (let i = 0; i <= yTickCount; i++) {
+        const y = getY(i * yTickValue);
+        const value = i * yTickValue;
+        svgElements += `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--border-color)" stroke-width="1"/>`;
+        svgElements += `<text x="${padding.left - 8}" y="${y + 4}" font-size="10" fill="var(--sub-text-color)" text-anchor="end">${value}</text>`;
+    }
+
+    labels.forEach((label, index) => {
+        if (index % Math.ceil(labels.length / 10) === 0) {
+            const x = getX(index);
+            svgElements += `<text x="${x}" y="${height - padding.bottom + 15}" font-size="10" fill="var(--sub-text-color)" text-anchor="middle">${label}</text>`;
+        }
+    });
+
+    series.forEach((s, seriesIndex) => {
+        const color = this.COLOR_PALETTES[0][seriesIndex % this.COLOR_PALETTES[0].length];
+        const points = s.data.map((value, index) => `${getX(index)},${getY(value)}`).join(' ');
+        svgElements += `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"/>`;
+    });
+
+    let legendX = padding.left;
+    const legendY = height - padding.bottom + 40;
+    series.forEach((s, seriesIndex) => {
+        const color = this.COLOR_PALETTES[0][seriesIndex % this.COLOR_PALETTES[0].length];
+        svgElements += `<rect x="${legendX}" y="${legendY - 8}" width="12" height="8" fill="${color}" rx="2"/>`;
+        const textElement = `<text x="${legendX + 18}" y="${legendY}" font-size="12" fill="var(--text-color)">${s.name}</text>`;
+        svgElements += textElement;
+        legendX += 25 + s.name.length * 8;
+    });
+
+    const totalMessages = series.reduce((sum, s) => sum + s.data.reduce((a, b) => a + b, 0), 0);
     const cardHtml = `
       <div class="container">
         <div class="header">
-          <div class="stat-chip">总计: <span>${typeof total === 'number' ? total.toLocaleString() : total}</span></div>
+          <div class="stat-chip">总计: <span>${totalMessages.toLocaleString()}</span></div>
           <h1 class="title-text">${title}</h1>
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
-        <div class="chart-container">
-          ${hourlyCounts.map((count, hour) => `
-            <div class="bar-wrapper">
-              <div class="bar-value">${count > 0 ? count : ''}</div>
-              <div class="bar-container">
-                <div class="bar" style="height: ${(count / maxCount) * 100}%;"></div>
-              </div>
-              <div class="bar-label">${labels ? labels[hour] : hour}</div>
-            </div>`).join('')
-          }
+        <div class="chart-wrapper">
+          <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+            ${svgElements}
+          </svg>
         </div>
       </div>`;
 
+    const chartStyles = ` .chart-wrapper { padding: 10px; } `;
     const fullHtml = this.generateFullHtml(cardHtml, chartStyles);
     const imageBuffer = await this.htmlToImage(fullHtml);
     if (imageBuffer) yield imageBuffer;

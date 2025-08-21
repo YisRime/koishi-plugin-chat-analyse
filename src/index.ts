@@ -39,6 +39,7 @@ export interface Config {
   rankRetentionDays: number;
   enableWordCloud: boolean;
   cacheRetentionDays: number;
+  enableSimilarActivity: boolean; // 新增配置项
 }
 
 /** @description 插件的配置项定义 */
@@ -60,6 +61,7 @@ export const Config: Schema<Config> = Schema.intersect([
     enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
     cacheRetentionDays: Schema.number().min(0).default(30).description('记录保留天数'),
     enableWordCloud: Schema.boolean().default(true).description('启用词云生成'),
+    enableSimilarActivity: Schema.boolean().default(true).description('启用相似活跃分析'),
   }).description('高级分析配置'),
 ]);
 
@@ -136,5 +138,5 @@ export function apply(ctx: Context, config: Config) {
   new Stat(ctx, config).registerCommands(analyse);
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
   if (config.enableDataIO) new Data(ctx).registerCommands(analyse);
-  if (config.enableOriRecord && config.enableWordCloud) new Analyse(ctx, config).registerCommands(analyse);
+  if (config.enableWordCloud || config.enableSimilarActivity) new Analyse(ctx, config).registerCommands(analyse);
 }

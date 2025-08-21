@@ -11,6 +11,27 @@ export interface WordCloudData {
 }
 
 /**
+ * 计算两个向量的余弦相似度
+ * @param vecA 向量A
+ * @param vecB 向量B
+ * @returns 相似度得分 (0-1)
+ */
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+    let dotProduct = 0;
+    let magA = 0;
+    let magB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dotProduct += (vecA[i] || 0) * (vecB[i] || 0);
+        magA += (vecA[i] || 0) * (vecA[i] || 0);
+        magB += (vecB[i] || 0) * (vecB[i] || 0);
+    }
+    magA = Math.sqrt(magA);
+    magB = Math.sqrt(magB);
+    if (magA === 0 || magB === 0) return 0;
+    return dotProduct / (magA * magB);
+}
+
+/**
  * @class Analyse
  * @description 提供文本分析功能，如生成词云。
  */
@@ -83,6 +104,68 @@ export class Analyse {
             this.ctx.logger.error('生成词云图片失败:', error);
             return '图片渲染失败';
           }
+        });
+    }
+
+    if (this.config.enableSimilarActivity) {
+      cmd.subcommand('simiactive', '相似活跃分析')
+        .usage('分析你和群友的活跃度，找出谁和你的活跃度最相似。')
+        .option('hours', '-n <hours:number> 指定分析时长(小时)', { fallback: 24 })
+        .action(async ({ session, options }) => {
+            if (!session.guildId) return '请在群组中使用此命令';
+            try {
+                const until = new Date();
+                const since = new Date(until.getTime() - options.hours * Time.hour);
+                const points = options.hours;
+
+                const guildUsers = await this.ctx.database.get('analyse_user', { channelId: session.guildId });
+                if (guildUsers.length < 2) return '暂无用户数据';
+
+                const selfUser = guildUsers.find(u => u.userId === session.userId);
+                const guildUserUids = guildUsers.map(u => u.uid);
+                const uidToNameMap = new Map(guildUsers.map(u => [u.uid, u.userName]));
+
+                const records = await this.ctx.database.get('analyse_rank', { uid: { $in: guildUserUids }, timestamp: { $gte: since } });
+                if (records.length === 0) return '暂无统计数据';
+
+                const activityVectors = new Map<number, number[]>();
+                guildUserUids.forEach(uid => activityVectors.set(uid, Array(points).fill(0)));
+
+                records.forEach(stat => {
+                    const diff = until.getTime() - stat.timestamp.getTime();
+                    const index = points - 1 - Math.floor(diff / Time.hour);
+                    if (index >= 0 && index < points) {
+                        activityVectors.get(stat.uid)[index] += stat.count;
+                    }
+                });
+
+                const selfVector = activityVectors.get(selfUser.uid);
+                if (!selfVector || selfVector.every(v => v === 0)) return '暂无统计数据';
+
+                const similarities = guildUserUids
+                    .filter(uid => uid !== selfUser.uid && !activityVectors.get(uid).every(v => v === 0))
+                    .map(uid => ({ uid, score: cosineSimilarity(selfVector, activityVectors.get(uid)) }))
+                    .sort((a, b) => b.score - a.score);
+
+                if (similarities.length === 0) return '暂无相似用户';
+
+                const top5 = similarities.slice(0, 5);
+                const series = [ { name: uidToNameMap.get(selfUser.uid) || '您', data: selfVector } ];
+                top5.forEach(sim => {
+                    const name = uidToNameMap.get(sim.uid) || `UID ${sim.uid}`;
+                    series.push({ name: `${name} (${(sim.score * 100).toFixed(1)}%)`, data: activityVectors.get(sim.uid) });
+                });
+
+                const labels = Array.from({ length: points }, (_, i) => String(new Date(until.getTime() - (points - 1 - i) * Time.hour).getHours()));
+                const title = `${options.hours}小时相似活跃分析`;
+
+                const imageGenerator = this.renderer.renderLineChart({ title, time: new Date(), series, labels });
+                for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));
+
+            } catch (error) {
+                this.ctx.logger.error('生成作息分析图片失败:', error);
+                return '图片渲染失败';
+            }
         });
     }
   }

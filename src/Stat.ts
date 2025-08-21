@@ -249,9 +249,9 @@ export class Stat {
               counts[index] += stat.count;
             }
           });
-          const total = counts.reduce((a, b) => a + b, 0);
           const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '活跃', timeRange: options.duration, timeUnit: timeUnitName });
-          return this.renderer.renderCircadianChart({ title, time: new Date(), total, data: counts, labels });
+          const series = [{ name: '活跃度', data: counts }];
+          return this.renderer.renderLineChart({ title, time: new Date(), series, labels });
         })()));
     }
   }
