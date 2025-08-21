@@ -166,7 +166,7 @@ export class Stat {
         .option('guild', '-g <guildId:string> 指定群组')
         .option('type', '-t <type:string> 指定类型')
         .option('duration', '-n <hours:number> 指定时长', { fallback: 24 })
-        .option('offset', '-o <hours:number> 指定偏移')
+        .option('offset', '-o <hours:number> 指定偏移', { fallback: 0 })
         .option('all', '-a 全局统计')
         .action(({ session, options }) => handleAction(session, (async () => {
           const scope = await this.parseScope(session, options);
@@ -217,7 +217,7 @@ export class Stat {
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('duration', '-n <units:number> 指定时长', { fallback: 24 })
-        .option('offset', '-o <units:number> 指定偏移')
+        .option('offset', '-o <units:number> 指定偏移', { fallback: 0 })
         .option('days', '-d 以天为粒度')
         .option('all', '-a 全局统计')
         .action(({ session, options }) => handleAction(session, (async () => {

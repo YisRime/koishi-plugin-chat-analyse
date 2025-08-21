@@ -260,8 +260,13 @@ export class Renderer {
   public async *renderLineChart(data: LineChartData): AsyncGenerator<Buffer> {
     const { title, time, series, labels } = data;
 
+    const seriesColors = series.map(() => {
+      const randomPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
+      return randomPalette[Math.floor(Math.random() * randomPalette.length)];
+    });
+
     const width = 600, height = 320;
-    const padding = { top: 20, right: 20, bottom: 60, left: 40 };
+    const padding = { top: 20, right: 30, bottom: 80, left: 40 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
     const maxVal = Math.max(1, ...series.flatMap(s => s.data));
@@ -269,7 +274,10 @@ export class Renderer {
     const yTickValue = Math.ceil(maxVal / yTickCount);
     const yAxisMax = yTickValue * yTickCount;
 
-    const getX = (index: number) => padding.left + (index / (labels.length - 1)) * chartWidth;
+    const getX = (index: number) => {
+      if (labels.length <= 1) return padding.left + chartWidth / 2;
+      return padding.left + (index / (labels.length - 1)) * chartWidth;
+    };
     const getY = (value: number) => padding.top + chartHeight - (value / yAxisMax) * chartHeight;
 
     let svgElements = '';
@@ -282,27 +290,33 @@ export class Renderer {
     }
 
     labels.forEach((label, index) => {
-        if (index % Math.ceil(labels.length / 10) === 0) {
+        if (index % Math.ceil(labels.length / 12) === 0) {
             const x = getX(index);
-            svgElements += `<text x="${x}" y="${height - padding.bottom + 15}" font-size="10" fill="var(--sub-text-color)" text-anchor="middle">${label}</text>`;
+            svgElements += `<text x="${x}" y="${height - padding.bottom + 20}" font-size="10" fill="var(--sub-text-color)" text-anchor="middle">${label}</text>`;
         }
     });
 
     series.forEach((s, seriesIndex) => {
-        const color = this.COLOR_PALETTES[0][seriesIndex % this.COLOR_PALETTES[0].length];
+        const color = seriesColors[seriesIndex];
         const points = s.data.map((value, index) => `${getX(index)},${getY(value)}`).join(' ');
         svgElements += `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"/>`;
     });
 
-    let legendX = padding.left;
-    const legendY = height - padding.bottom + 40;
-    series.forEach((s, seriesIndex) => {
-        const color = this.COLOR_PALETTES[0][seriesIndex % this.COLOR_PALETTES[0].length];
+    if (series.length > 1) {
+      const ITEMS_PER_ROW = 3;
+      const ROW_HEIGHT = 20;
+      const LEGEND_START_Y = height - padding.bottom + 45;
+      const columnWidth = chartWidth / ITEMS_PER_ROW;
+      series.forEach((s, seriesIndex) => {
+        const rowIndex = Math.floor(seriesIndex / ITEMS_PER_ROW);
+        const colIndex = seriesIndex % ITEMS_PER_ROW;
+        const legendX = padding.left + (colIndex * columnWidth);
+        const legendY = LEGEND_START_Y + (rowIndex * ROW_HEIGHT);
+        const color = seriesColors[seriesIndex];
         svgElements += `<rect x="${legendX}" y="${legendY - 8}" width="12" height="8" fill="${color}" rx="2"/>`;
-        const textElement = `<text x="${legendX + 18}" y="${legendY}" font-size="12" fill="var(--text-color)">${s.name}</text>`;
-        svgElements += textElement;
-        legendX += 25 + s.name.length * 8;
-    });
+        svgElements += `<text x="${legendX + 18}" y="${legendY}" font-size="12" fill="var(--text-color)">${s.name}</text>`;
+      });
+    }
 
     const totalMessages = series.reduce((sum, s) => sum + s.data.reduce((a, b) => a + b, 0), 0);
     const cardHtml = `
