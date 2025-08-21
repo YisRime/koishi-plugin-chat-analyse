@@ -31,11 +31,13 @@ export class WhoAt {
       .usage('查看最近提及我的消息，查看后自动删除。')
       .action(async ({ session }) => {
         if (!session.userId) return '无法获取用户信息';
+        const records = await this.ctx.database.get('analyse_at', { target: session.userId }, {
+          sort: { timestamp: 'asc' }, limit: 100
+        });
+
+        if (records.length === 0) return '最近没有人提及您';
+
         try {
-          const records = await this.ctx.database.get('analyse_at', { target: session.userId }, {
-            sort: { timestamp: 'asc' }, limit: 100
-          });
-          if (records.length === 0) return '最近没有人提及您';
           const uids = [...new Set(records.map(r => r.uid))];
           const users = await this.ctx.database.get('analyse_user', { uid: { $in: uids } }, ['uid', 'userName', 'userId']);
           const userInfoMap = new Map(users.map(u => [u.uid, { name: u.userName, id: u.userId }]));
@@ -44,11 +46,9 @@ export class WhoAt {
             const author = h('author', { id: senderInfo.id, name: senderInfo.name });
             return h('message', {}, [ author, h.text(record.content) ]);
           });
-
+          await session.send(h('message', { forward: true }, messageElements));
           const recordIdsToDelete = records.map(r => r.id);
           await this.ctx.database.remove('analyse_at', { id: { $in: recordIdsToDelete } });
-
-          return h('message', { forward: true }, messageElements);
         } catch (error) {
           this.ctx.logger.error('查询提及记录失败:', error);
           return '查询失败，请稍后重试';

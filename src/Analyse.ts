@@ -43,7 +43,6 @@ export class Analyse {
         .option('guild', '-g <guildId:string> 指定群组')
         .option('user', '-u <user:string> 指定用户')
         .option('hours', '-t <hours:number> 指定时长', { fallback: 24 })
-        .option('all', '-a 全局')
         .action(async ({ session, options }) => {
           try {
             if (!this.jieba) return 'Jieba 分词服务未就绪';
@@ -76,7 +75,7 @@ export class Analyse {
             const topWordsPreview = wordList.slice(0, 10).map(item => item[0]).join(', ');
             session.send(`正在生成词云，热门词汇：${topWordsPreview}...`);
 
-            const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云' });
+            const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云', timeRange: options.hours });
             const imageGenerator = this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
             for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));
 
