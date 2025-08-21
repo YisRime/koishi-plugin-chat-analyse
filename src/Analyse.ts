@@ -110,13 +110,32 @@ export class Analyse {
     if (this.config.enableSimilarActivity) {
       cmd.subcommand('simiactive', '相似活跃分析')
         .usage('分析你和群友的活跃度，找出谁和你的活跃度最相似。')
-        .option('hours', '-n <hours:number> 指定分析时长(小时)', { fallback: 24 })
+        .option('hours', '-n <hours:number> 指定时长', { fallback: 24 })
+        .option('separate', '-p 分时分析')
         .action(async ({ session, options }) => {
             if (!session.guildId) return '请在群组中使用此命令';
             try {
                 const until = new Date();
-                const since = new Date(until.getTime() - options.hours * Time.hour);
-                const points = options.hours;
+                let since: Date;
+                let points: number;
+                let title: string;
+                let labels: string[];
+                let daysToAnalyze = 0;
+
+                if (options.separate) {
+                    points = options.hours;
+                    since = new Date(until.getTime() - options.hours * Time.hour);
+                    title = `${options.hours}小时相似活跃分析`;
+                    labels = Array.from({ length: points }, (_, i) => String(new Date(until.getTime() - (points - 1 - i) * Time.hour).getHours()));
+                } else {
+                    daysToAnalyze = Math.floor(options.hours / 24);
+                    if (daysToAnalyze < 1) return '请指定至少 24 小时时长';
+                    const analysisDurationHours = daysToAnalyze * 24;
+                    since = new Date(until.getTime() - analysisDurationHours * Time.hour);
+                    points = 24;
+                    title = `${daysToAnalyze}天相似活跃分析`;
+                    labels = Array.from({ length: 24 }, (_, i) => String(i));
+                }
 
                 const guildUsers = await this.ctx.database.get('analyse_user', { channelId: session.guildId });
                 if (guildUsers.length < 2) return '暂无用户数据';
@@ -132,12 +151,19 @@ export class Analyse {
                 guildUserUids.forEach(uid => activityVectors.set(uid, Array(points).fill(0)));
 
                 records.forEach(stat => {
-                    const diff = until.getTime() - stat.timestamp.getTime();
-                    const index = points - 1 - Math.floor(diff / Time.hour);
+                    let index: number;
+                    if (options.separate) {
+                        const diff = until.getTime() - stat.timestamp.getTime();
+                        index = points - 1 - Math.floor(diff / Time.hour);
+                    } else {
+                        index = stat.timestamp.getHours();
+                    }
                     if (index >= 0 && index < points) {
                         activityVectors.get(stat.uid)[index] += stat.count;
                     }
                 });
+
+                if (!options.separate && daysToAnalyze > 0) activityVectors.forEach((vector) => { for (let i = 0; i < vector.length; i++) vector[i] = vector[i] / daysToAnalyze; });
 
                 const selfVector = activityVectors.get(selfUser.uid);
                 if (!selfVector || selfVector.every(v => v === 0)) return '暂无统计数据';
@@ -155,9 +181,6 @@ export class Analyse {
                     const name = uidToNameMap.get(sim.uid) || `UID ${sim.uid}`;
                     series.push({ name: `${name} (${(sim.score * 100).toFixed(1)}%)`, data: activityVectors.get(sim.uid) });
                 });
-
-                const labels = Array.from({ length: points }, (_, i) => String(new Date(until.getTime() - (points - 1 - i) * Time.hour).getHours()));
-                const title = `${options.hours}小时相似活跃分析`;
 
                 const imageGenerator = this.renderer.renderLineChart({ title, time: new Date(), series, labels });
                 for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));

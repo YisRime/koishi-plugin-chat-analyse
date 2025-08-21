@@ -35,20 +35,23 @@ export interface LineChartData {
 export class Renderer {
 
   private readonly COLOR_PALETTES = [
-    // 1. Oceanic: 深邃的海洋蓝与青色系，沉稳专业
-    ['#003f5c', '#2f4b7c', '#0077b6', '#023e8a', '#2a6f97', '#0096c7'],
-    // 2. Sunset: 充满活力的日落色系，温暖而醒目
-    ['#c1121f', '#d9501e', '#e36414', '#9a031e', '#5f0f40', '#fb8500'],
-    // 3. Forest: 茂密森林的绿色系，自然且舒适
-    ['#1b4332', '#2d6a4f', '#40916c', '#52b788', '#283618', '#081c15'],
-    // 4. Grape: 浓郁的葡萄与浆果色系，高贵而神秘
-    ['#4a0072', '#6a00a8', '#810099', '#c71585', '#58004f', '#3d0c4c'],
-    // 5. Candy: 甜美的糖果色系，活泼有趣
-    ['#e63946', '#f77f00', '#2a9d8f', '#457b9d', '#8d99ae', '#d62828'],
-    // 6. Retro: 复古风格色盘，兼具沉稳与活力
-    ['#264653', '#2a9d8f', '#e76f51', '#f4a261', '#bc6c25', '#a56c03'],
-    // 7. Midnight: 深邃的午夜色系，搭配亮色点缀，对比强烈
-    ['#03045e', '#0077b6', '#00b4d8', '#d00000', '#e85d04', '#212529'],
+    // 1. Oceanic Blues: 宁静的蓝色系，适合专业、冷静的图表
+    ['#CAF0F8', '#90E0EF', '#00B4D8', '#0077B6', '#03045E'],
+    // 2. Forest Greens: 自然的绿色系，代表成长与和谐
+    ['#D8F3DC', '#95D5B2', '#52B788', '#2D6A4F', '#1B4332'],
+    // 3. Royal Purples: 优雅的紫色系，带有一丝神秘感
+    ['#E0AAFF', '#C77DFF', '#9D4EDD', '#7B2CBF', '#5A189A'],
+    // 4. Sunset Oranges: 温暖的橙色系，充满活力与热情
+    ['#FFF3B0', '#FFD670', '#FFB703', '#F8961E', '#E85D04'],
+
+    // 5. Vivid Candy: 鲜艳的糖果色，活泼、醒目
+    ['#E63946', '#F1FAEE', '#A8DADC', '#457B9D', '#1D3557'],
+    // 6. Retro Groove: 复古风格，兼具沉稳与活力
+    ['#264653', '#2A9D8F', '#E9C46A', '#F4A261', '#E76F51'],
+    // 7. Pastel Rainbow: 温和的彩虹色，柔和、美观
+    ['#FFADAD', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF'],
+    // 8. Bold & Contrasting: 大胆的撞色，对比强烈，引人注目
+    ['#D00000', '#FFBA08', '#3F88C5', '#032B43', '#136F63']
   ];
 
   private readonly COMMON_STYLE = `
@@ -259,14 +262,13 @@ export class Renderer {
    */
   public async *renderLineChart(data: LineChartData): AsyncGenerator<Buffer> {
     const { title, time, series, labels } = data;
+    const colorfulPalettes = this.COLOR_PALETTES.slice(4);
+    const selectedPalette = colorfulPalettes[Math.floor(Math.random() * colorfulPalettes.length)];
+    const shuffledColors = [...selectedPalette].sort(() => 0.5 - Math.random());
+    const seriesColors = series.map((_, index) => shuffledColors[index % shuffledColors.length]);
 
-    const seriesColors = series.map(() => {
-      const randomPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
-      return randomPalette[Math.floor(Math.random() * randomPalette.length)];
-    });
-
-    const width = 600, height = 320;
-    const padding = { top: 20, right: 20, bottom: 70, left: 20 };
+    const width = 600, height = 300;
+    const padding = { top: 15, right: 15, bottom: 60, left: 25 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
     const maxVal = Math.max(1, ...series.flatMap(s => s.data));
