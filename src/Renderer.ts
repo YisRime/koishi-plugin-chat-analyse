@@ -74,7 +74,7 @@ export class Renderer {
       border-bottom: 1px solid var(--border-color);
     }
     .title-text {
-      font-size: 18px; font-weight: 600; color: var(--header-color);
+      font-size: 16px; font-weight: 600; color: var(--header-color);
       margin: 0; text-align: center;
     }
     .stat-chip, .time-label {
@@ -192,7 +192,7 @@ export class Renderer {
       .main-table { border-collapse: collapse; width: 100%; }
       .main-table th, .main-table td { padding: 9px 16px; vertical-align: middle; text-align: left; }
       .main-table thead { border-bottom: 1px solid var(--border-color); }
-      .main-table th { font-size: 12px; font-weight: 500; color: var(--sub-text-color); text-transform: uppercase; }
+      .main-table th { font-size: 12px; font-weight: 500; color: var(--sub-text-color); text-transform: uppercase; white-space: nowrap; }
       .main-table td { font-size: 14px; color: var(--text-color); }
       .main-table tbody tr:nth-child(even) { background-color: var(--stripe-bg); }
       .rank-cell, .count-cell, .date-cell, .percent-cell { text-align: right; white-space: nowrap; width: 1%; font-variant-numeric: tabular-nums; }

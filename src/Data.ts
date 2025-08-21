@@ -95,7 +95,7 @@ export class Data {
       .option('user', '-u <user:string> 指定用户')
       .option('days', '-d <days:number> 指定天数')
       .option('command', '-c <command:string> 指定命令')
-      .option('all', '-a 清除全部')
+      .option('all', '-a 全部清除')
       .action(async ({ options }) => {
         if (Object.keys(options).length === 0) return '请指定清除条件';
         if (options.table && !ALL_TABLES.includes(options.table as keyof Tables)) return `表名 ${options.table} 无效`;

@@ -66,13 +66,14 @@ export class Stat {
         .usage('查询命令统计，可指定查询范围，默认当前群组。')
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
-        .option('separate', '-s 分离展示')
+        .option('separate', '-p 分离子命令')
+        .option('sortByTime', '-s 以时间排序')
         .option('all', '-a 全局统计')
         .action(({ session, options }) => handleAction(session, (async () => {
           const scope = await this.parseScope(session, options);
           if (scope.error) return scope.error;
           const query: any = scope.uids ? { uid: { $in: scope.uids } } : {};
-          const stats = await this.ctx.database.select('analyse_cmd').where(query).groupBy('command', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+          const stats = await this.ctx.database.select('analyse_cmd').where(query).groupBy('command', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).execute();
           if (stats.length === 0) return '暂无统计数据';
           let processedStats;
           if (options.separate) {
@@ -86,7 +87,12 @@ export class Stat {
               if (stat.lastUsed > existing.lastUsed) existing.lastUsed = stat.lastUsed;
               merged.set(mainCmd, existing);
             }
-            processedStats = Array.from(merged.entries()).map(([command, data]) => ({ ...data, command })).sort((a, b) => b.count - a.count);
+            processedStats = Array.from(merged.entries()).map(([command, data]) => ({ ...data, command }));
+          }
+          if (options.sortByTime) {
+            processedStats.sort((a, b) => b.lastUsed.getTime() - a.lastUsed.getTime());
+          } else {
+            processedStats.sort((a, b) => b.count - a.count);
           }
           const total = processedStats.reduce((sum, r) => sum + r.count, 0);
           const list = processedStats.map(item => [item.command, item.count, item.lastUsed]);
@@ -101,6 +107,7 @@ export class Stat {
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
         .option('type', '-t <type:string> 指定类型')
+        .option('sortByTime', '-s 以时间排序')
         .option('all', '-a 全局统计')
         .action(({ session, options }) => handleAction(session, (async () => {
           const scope = await this.parseScope(session, options);
@@ -108,9 +115,17 @@ export class Stat {
           const query: any = scope.uids ? { uid: { $in: scope.uids } } : {};
           if (options.type) query.type = options.type;
           const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '发言', subtype: options.type });
+          const applySort = (stats: any[]) => {
+            if (options.sortByTime) {
+              stats.sort((a, b) => b.lastUsed.getTime() - a.lastUsed.getTime());
+            } else {
+              stats.sort((a, b) => b.count - a.count);
+            }
+          };
           if (options.user && options.guild) {
-            const stats = await this.ctx.database.select('analyse_msg').where(query).groupBy('type', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+            const stats = await this.ctx.database.select('analyse_msg').where(query).groupBy('type', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).execute();
             if (stats.length === 0) return '暂无统计数据';
+            applySort(stats);
             const total = stats.reduce((sum, r) => sum + r.count, 0);
             const list = stats.map(item => [item.type, item.count, item.lastUsed]);
             return this.renderer.renderList({ title, time: new Date(), total, list }, ['类型', '条数', '最后发言']);
@@ -118,20 +133,29 @@ export class Stat {
           if (options.user) {
             const userRecords = await this.ctx.database.get('analyse_user', { uid: { $in: scope.uids } });
             const uidToChannelMap = new Map(userRecords.map(u => [u.uid, u.channelName || u.channelId]));
-            const stats = await this.ctx.database.select('analyse_msg').where(query).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+            const stats = await this.ctx.database.select('analyse_msg').where(query).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).execute();
             if (stats.length === 0) return '暂无统计数据';
+            applySort(stats);
             const total = stats.reduce((sum, r) => sum + r.count, 0);
             const list = stats.map(item => [uidToChannelMap.get(item.uid) || `未知群组`, item.count, item.lastUsed]);
             return this.renderer.renderList({ title, time: new Date(), total, list }, ['群组', '条数', '最后发言']);
           }
-          const stats = await this.ctx.database.select('analyse_msg').where(query).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).orderBy('count', 'desc').execute();
+          const stats = await this.ctx.database.select('analyse_msg').where(query).groupBy('uid', { count: row => $.sum(row.count), lastUsed: row => $.max(row.timestamp) }).execute();
           if (stats.length === 0) return '暂无统计数据';
+          applySort(stats);
           const allUids = stats.map(s => s.uid);
-          const users = await this.ctx.database.get('analyse_user', { uid: { $in: allUids } }, ['uid', 'userName']);
-          const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
+          const userNameMap = new Map<number, string>();
+          const BATCH_SIZE = 4096;
+          for (let i = 0; i < allUids.length; i += BATCH_SIZE) {
+            const batchUids = allUids.slice(i, i + BATCH_SIZE);
+            const users = await this.ctx.database.get('analyse_user', { uid: { $in: batchUids } }, ['uid', 'userName']);
+            for (const user of users) {
+              userNameMap.set(user.uid, user.userName);
+            }
+          }
           const total = stats.reduce((sum, r) => sum + r.count, 0);
           const list = stats.map(item => [userNameMap.get(item.uid) || `UID ${item.uid}`, item.count, item.lastUsed]);
-          return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '总计发言', '最后发言']);
+          return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '条数', '最后发言']);
         })()));
     }
 
@@ -172,11 +196,18 @@ export class Stat {
           const stats = await this.ctx.database.select('analyse_rank').where(query).groupBy('uid', { count: row => $.sum(row.count) }).orderBy('count', 'desc').execute();
           if (stats.length === 0) return '暂无统计数据';
           const allUids = stats.map(s => s.uid);
-          const users = await this.ctx.database.get('analyse_user', { uid: { $in: allUids } }, ['uid', 'userName']);
-          const userNameMap = new Map(users.map(u => [u.uid, u.userName]));
+          const userNameMap = new Map<number, string>();
+          const BATCH_SIZE = 4096;
+          for (let i = 0; i < allUids.length; i += BATCH_SIZE) {
+            const batchUids = allUids.slice(i, i + BATCH_SIZE);
+            const users = await this.ctx.database.get('analyse_user', { uid: { $in: batchUids } }, ['uid', 'userName']);
+            for (const user of users) {
+              userNameMap.set(user.uid, user.userName);
+            }
+          }
           const total = stats.reduce((sum, r) => sum + r.count, 0);
           const list = stats.map(r => [userNameMap.get(r.uid) || `UID ${r.uid}`, r.count, total > 0 ? `${(r.count / total * 100).toFixed(2)}%` : '0.00%']);
-          return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '总计发言', '占比']);
+          return this.renderer.renderList({ title, time: new Date(), total, list }, ['用户', '条数', '占比']);
         })()));
     }
 
@@ -187,7 +218,7 @@ export class Stat {
         .option('guild', '-g <guildId:string> 指定群组')
         .option('duration', '-n <units:number> 指定时长', { fallback: 24 })
         .option('offset', '-o <units:number> 指定偏移')
-        .option('days', '-d 切换至天')
+        .option('days', '-d 以天为粒度')
         .option('all', '-a 全局统计')
         .action(({ session, options }) => handleAction(session, (async () => {
           const scope = await this.parseScope(session, options);
