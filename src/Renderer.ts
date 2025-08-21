@@ -270,7 +270,7 @@ export class Renderer {
     const seriesColors = series.map((_, index) => shuffledColors[index % shuffledColors.length]);
 
     const width = 600, height = 320;
-    const padding = { top: 10, right: 15, bottom: 60, left: 25 };
+    const padding = { top: 10, right: 20, bottom: 70, left: 20 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
     const maxVal = Math.max(1, ...series.flatMap(s => s.data));
