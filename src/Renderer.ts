@@ -35,23 +35,25 @@ export interface LineChartData {
 export class Renderer {
 
   private readonly COLOR_PALETTES = [
-    // 1. Oceanic Blues: 宁静的蓝色系，适合专业、冷静的图表
-    ['#CAF0F8', '#90E0EF', '#00B4D8', '#0077B6', '#03045E'],
-    // 2. Forest Greens: 自然的绿色系，代表成长与和谐
-    ['#D8F3DC', '#95D5B2', '#52B788', '#2D6A4F', '#1B4332'],
-    // 3. Royal Purples: 优雅的紫色系，带有一丝神秘感
-    ['#E0AAFF', '#C77DFF', '#9D4EDD', '#7B2CBF', '#5A189A'],
-    // 4. Sunset Oranges: 温暖的橙色系，充满活力与热情
-    ['#FFF3B0', '#FFD670', '#FFB703', '#F8961E', '#E85D04'],
+    // --- 4组近似色 ---
+    // 1. Oceanic Blues: 更深邃、专业的蓝色系
+    ['#A9D6E5', '#89C2D9', '#61A5C2', '#2A6F97', '#012A4A'],
+    // 2. Forest Greens: 丰富、饱和的绿色系
+    ['#ADDDBC', '#80C9A7', '#52B69A', '#34A0A4', '#168AAD'],
+    // 3. Royal Purples: 优雅、浓郁的紫色系
+    ['#C792DF', '#AB69C6', '#9040AD', '#7B2CBF', '#5A189A'],
+    // 4. Sunset Glow: 温暖、明亮的日落色系
+    ['#FFDD77', '#FFC94A', '#FFB703', '#F8961E', '#E85D04'],
 
-    // 5. Vivid Candy: 鲜艳的糖果色，活泼、醒目
-    ['#E63946', '#F1FAEE', '#A8DADC', '#457B9D', '#1D3557'],
-    // 6. Retro Groove: 复古风格，兼具沉稳与活力
-    ['#264653', '#2A9D8F', '#E9C46A', '#F4A261', '#E76F51'],
-    // 7. Pastel Rainbow: 温和的彩虹色，柔和、美观
-    ['#FFADAD', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF'],
-    // 8. Bold & Contrasting: 大胆的撞色，对比强烈，引人注目
-    ['#D00000', '#FFBA08', '#3F88C5', '#032B43', '#136F63']
+    // --- 4组缤纷色 ---
+    // 5. Vivid Candy: 鲜艳的糖果色
+    ['#E63946', '#588157', '#A8DADC', '#457B9D', '#1D3557'],
+    // 6. Retro Groove: 复古风格
+    ['#264653', '#2A9D8F', '#F0C151', '#F4A261', '#E76F51'],
+    // 7. Neon Pop: 高对比度的现代色彩组合
+    ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#073B4C'],
+    // 8. Bold Impact: 大胆且冲击力强的撞色
+    ['#D90429', '#F95738', '#F2C57C', '#0C7C59', '#003E1F']
   ];
 
   private readonly COMMON_STYLE = `
@@ -268,7 +270,7 @@ export class Renderer {
     const seriesColors = series.map((_, index) => shuffledColors[index % shuffledColors.length]);
 
     const width = 600, height = 320;
-    const padding = { top: 15, right: 15, bottom: 60, left: 25 };
+    const padding = { top: 10, right: 15, bottom: 60, left: 25 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
     const maxVal = Math.max(1, ...series.flatMap(s => s.data));
