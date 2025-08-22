@@ -1,4 +1,4 @@
-import { Context, Command, Element, Tables, Time, $ } from 'koishi';
+import { Context, Command, Element, Tables, Time, $, h } from 'koishi';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -13,7 +13,7 @@ const BATCH_SIZE = 100;
 export class Data {
   private dataDir: string;
 
-  constructor(private ctx: Context) {
+  constructor(private ctx: Context, private config: any) {
     this.dataDir = path.join(this.ctx.baseDir, 'data', 'chat-analyse');
   }
 
@@ -180,6 +180,61 @@ export class Data {
           return '数据清理失败';
         }
       });
+
+    if (this.config.enableOriRecord) {
+      cmd.subcommand('.view <time:string>', '查询消息记录', { authority: 4 })
+        .usage('查询指定时间点后的消息记录，默认查询当前群组。')
+        .option('user', '-u <user:string> 指定用户')
+        .option('guild', '-g <guildId:string> 指定群组')
+        .action(async ({ session, options }, time) => {
+          if (!time) return '请以"YYYY-MM-DD HH:MM:SS"格式输入起始时间';
+
+          const since = new Date(time);
+          if (isNaN(since.getTime())) return '时间格式无效';
+          try {
+            const userQuery: any = {};
+            if (!options.guild && !options.user) {
+              if (!session.guildId) return '请指定查询范围';
+              userQuery.channelId = session.guildId;
+            } else {
+              if (options.guild) userQuery.channelId = options.guild;
+              if (options.user) userQuery.userId = Element.select(options.user, 'at')[0]?.attrs.id ?? options.user;
+            }
+
+            const usersInScope = await this.ctx.database.get('analyse_user', userQuery);
+            if (usersInScope.length === 0) return '暂无用户数据';
+            const uids = usersInScope.map(u => u.uid);
+
+            const records = await this.ctx.database.get('analyse_cache', {
+              uid: { $in: uids },
+              timestamp: { $gte: since }
+            }, {
+              sort: { timestamp: 'asc' },
+              limit: 100
+            });
+
+            if (records.length === 0) return '暂无统计数据';
+
+            const recordUids = [...new Set(records.map(r => r.uid))];
+            const users = await this.ctx.database.get('analyse_user', { uid: { $in: recordUids } }, ['uid', 'userName', 'userId']);
+            const userInfoMap = new Map(users.map(u => [u.uid, { name: u.userName, id: u.userId }]));
+
+            const messageElements = records.map(record => {
+              const senderInfo = userInfoMap.get(record.uid) || { name: `UID ${record.uid}`, id: 'unknown' };
+              const timeStr = record.timestamp.toLocaleTimeString('zh-CN', { hour12: false });
+              const author = h('author', { id: senderInfo.id, name: senderInfo.name });
+              const content = h.text(`[${timeStr}] ${record.content}`);
+              return h('message', {}, [author, content]);
+            });
+
+            await session.send(h('message', { forward: true }, messageElements));
+
+          } catch (error) {
+            this.ctx.logger.error('查询消息记录失败:', error);
+            return '查询消息记录失败';
+          }
+        });
+    }
 
     cmd.subcommand('.list', '列出数据', { authority: 4 })
       .usage('列出数据库中的频道和命令列表。')

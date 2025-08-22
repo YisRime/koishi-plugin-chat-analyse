@@ -39,7 +39,7 @@ export interface Config {
   rankRetentionDays: number;
   enableWordCloud: boolean;
   cacheRetentionDays: number;
-  enableSimilarActivity: boolean; // 新增配置项
+  enableSimilarActivity: boolean;
 }
 
 /** @description 插件的配置项定义 */
@@ -137,6 +137,6 @@ export function apply(ctx: Context, config: Config) {
   // 动态注册功能模块
   new Stat(ctx, config).registerCommands(analyse);
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
-  if (config.enableDataIO) new Data(ctx).registerCommands(analyse);
+  if (config.enableDataIO) new Data(ctx, config).registerCommands(analyse);
   if (config.enableWordCloud || config.enableSimilarActivity) new Analyse(ctx, config).registerCommands(analyse);
 }
