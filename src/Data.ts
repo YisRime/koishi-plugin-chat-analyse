@@ -1,4 +1,4 @@
-import { Context, Command, Element, Tables, Time } from 'koishi';
+import { Context, Command, Element, Tables, Time, $ } from 'koishi';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -95,6 +95,7 @@ export class Data {
       .option('user', '-u <user:string> 指定用户')
       .option('days', '-d <days:number> 指定天数')
       .option('command', '-c <command:string> 指定命令')
+      .option('limit', '-l <count:number> 指定次数')
       .option('all', '-a 全部清除')
       .action(async ({ options }) => {
         if (Object.keys(options).length === 0) return '请指定清除条件';
@@ -108,6 +109,15 @@ export class Data {
 
           const query: any = {};
           const descParts: string[] = [];
+          let uidsToClear: number[] | undefined;
+
+          if (options.limit > 0) {
+            descParts.push(`发言数 < ${options.limit}`);
+            const msgStats = await this.ctx.database.select('analyse_msg').groupBy('uid', { total: row => $.sum(row.count) }).execute();
+            const uidsFromLimit = msgStats.filter(s => s.total < options.limit).map(s => s.uid);
+            if (uidsFromLimit.length === 0) return '未找到相关数据';
+            uidsToClear = uidsFromLimit;
+          }
 
           if (options.guild || options.user) {
             const userQuery: any = {};
@@ -117,7 +127,17 @@ export class Data {
               userQuery.userId = userId;
               descParts.push(`用户 ${userId}`);
             }
-            const uidsToClear = (await this.ctx.database.get('analyse_user', userQuery)).map(u => u.uid);
+            const uidsFromScope = (await this.ctx.database.get('analyse_user', userQuery)).map(u => u.uid);
+
+            if (uidsToClear) {
+              const scopeUidSet = new Set(uidsFromScope);
+              uidsToClear = uidsToClear.filter(uid => scopeUidSet.has(uid));
+            } else {
+              uidsToClear = uidsFromScope;
+            }
+          }
+
+          if (uidsToClear) {
             if (uidsToClear.length === 0) return '未找到相关数据';
             query.uid = { $in: [...new Set(uidsToClear)] };
           }
@@ -136,17 +156,15 @@ export class Data {
             ? ['analyse_cmd']
             : (options.table ? [options.table] : ALL_TABLES.filter(t => t !== 'analyse_user'));
 
-          let foundData = false;
+          let totalRemoved = 0;
           for (const tableName of tablesToClear) {
-              const records = await this.ctx.database.get(tableName as any, query, ['uid']);
-              if (records.length > 0) {
-                  foundData = true;
-                  break;
-              }
+            const tableQuery = { ...query };
+            if (tableName !== 'analyse_cmd' && tableQuery.command) continue;
+            const result = await this.ctx.database.remove(tableName as any, tableQuery);
+            totalRemoved += result.removed;
           }
-          if (!foundData) return '未找到相关数据';
 
-          for (const tableName of tablesToClear) await this.ctx.database.remove(tableName as any, query);
+          if (totalRemoved === 0) return '未找到相关数据';
 
           const tableString = options.table ? `表 ${options.table}` : '所有表';
           const descString = descParts.join('、');
