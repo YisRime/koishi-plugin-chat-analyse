@@ -40,6 +40,7 @@ export interface Config {
   enableWordCloud: boolean;
   cacheRetentionDays: number;
   enableSimilarActivity: boolean;
+  enableAutoBackup: boolean;
 }
 
 /** @description 插件的配置项定义 */
@@ -53,13 +54,14 @@ export const Config: Schema<Config> = Schema.intersect([
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
     enableActivity: Schema.boolean().default(true).description('启用活跃统计'),
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
-    rankRetentionDays: Schema.number().min(0).default(180).description('排行保留天数'),
+    rankRetentionDays: Schema.number().min(0).default(365).description('排行保留天数'),
     enableWhoAt: Schema.boolean().default(true).description('启用提及记录'),
     atRetentionDays: Schema.number().min(0).default(3).description('提及保留天数'),
   }).description('基础分析配置'),
   Schema.object({
     enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
-    cacheRetentionDays: Schema.number().min(0).default(30).description('记录保留天数'),
+    cacheRetentionDays: Schema.number().min(0).default(31).description('记录保留天数'),
+    enableAutoBackup: Schema.boolean().default(false).description('启用自动备份'),
     enableWordCloud: Schema.boolean().default(true).description('启用词云生成'),
     enableSimilarActivity: Schema.boolean().default(true).description('启用相似活跃分析'),
   }).description('高级分析配置'),

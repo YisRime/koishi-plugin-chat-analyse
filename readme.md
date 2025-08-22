@@ -150,6 +150,7 @@
 
 `enableOriRecord`: **启用原始记录**。是否记录原始消息内容。这是 `.view` 和 `wordcloud` 功能的基础。 (默认: `true`)
 `cacheRetentionDays`: **原始记录保留天数**。原始消息记录的保留时长（天），`0` 为永久保留。 (默认: `30`)
+`enableAutoBackup`: **启用自动备份记录**。是否开启每月自动备份原始消息记录。 (默认: `false`)
 `enableWordCloud`: **启用词云生成**。
   > **!** 此功能依赖 **`启用原始记录`**。 (默认: `true`)
 `enableSimilarActivity`: **启用相似活跃分析**。

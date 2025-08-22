@@ -4,7 +4,9 @@ import * as path from 'path';
 
 /** 定义插件管理的所有数据表的表名数组。 */
 const ALL_TABLES: (keyof Tables)[] = ['analyse_user', 'analyse_cmd', 'analyse_msg', 'analyse_rank', 'analyse_at', 'analyse_cache'];
-const BATCH_SIZE = 100;
+/** 定义默认备份和恢复操作的核心数据表。 */
+const DEFAULT_BACKUP_TABLES: (keyof Tables)[] = ['analyse_user', 'analyse_cmd', 'analyse_msg', 'analyse_rank'];
+const BATCH_SIZE = 1000;
 
 /**
  * @class Data
@@ -15,6 +17,38 @@ export class Data {
 
   constructor(private ctx: Context, private config: any) {
     this.dataDir = path.join(this.ctx.baseDir, 'data', 'chat-analyse');
+    if (this.config.enableAutoBackup) this.ctx.cron('0 0 1 * *', () => { this.backupCache(); });
+  }
+
+  /**
+   * @private
+   * @method backupCache
+   * @description 备份 analyse_cache 表到 JSON 文件。
+   */
+  private async backupCache() {
+    try {
+      await fs.mkdir(this.dataDir, { recursive: true });
+      const now = new Date();
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const year = lastMonth.getFullYear();
+      const month = (lastMonth.getMonth() + 1).toString().padStart(2, '0');
+      const filename = `analyse_cache_${year}-${month}.json`;
+      const filepath = path.join(this.dataDir, filename);
+      const allUsers = await this.ctx.database.get('analyse_user', {});
+      if (allUsers.length === 0) return;
+      const uidToUserInfoMap = new Map(allUsers.map(u => [u.uid, u]));
+      const records = await this.ctx.database.get('analyse_cache', {});
+      if (records.length === 0) return;
+      const dataToExport = records.map(record => {
+        const userInfo = uidToUserInfoMap.get(record.uid);
+        if (!userInfo) return null;
+        const { id, uid, ...restOfRecord } = record;
+        return { userId: userInfo.userId, channelId: userInfo.channelId, ...restOfRecord };
+      }).filter(Boolean);
+      await fs.writeFile(filepath, JSON.stringify(dataToExport, null, 2));
+    } catch (error) {
+      this.ctx.logger.error('原始记录备份失败:', error);
+    }
   }
 
   /**
@@ -25,14 +59,16 @@ export class Data {
    */
   public registerCommands(cmd: Command) {
     cmd.subcommand('.backup', '备份数据', { authority: 4 })
-      .usage('将所有统计数据导出为 JSON 文件并保存到本地。')
-      .action(async () => {
+      .usage('将统计数据导出为 JSON 文件，并保存到本地。')
+      .option('all', '-a 全量备份')
+      .action(async ({ options }) => {
+        const tablesToProcess = options.all ? ALL_TABLES : DEFAULT_BACKUP_TABLES;
         try {
           await fs.mkdir(this.dataDir, { recursive: true });
           const allUsers = await this.ctx.database.get('analyse_user', {});
           const uidToUserInfoMap = new Map(allUsers.map(u => [u.uid, u]));
 
-          for (const tableName of ALL_TABLES) {
+          for (const tableName of tablesToProcess) {
             const filepath = path.join(this.dataDir, `${tableName}.json`);
             let dataToExport: any[];
 
@@ -57,8 +93,9 @@ export class Data {
       });
 
     cmd.subcommand('.restore', '恢复数据', { authority: 4 })
-      .usage(`从本地的 JSON 文件中恢复统计数据。`)
-      .action(async () => {
+      .usage('从本地的 JSON 文件中恢复统计数据。')
+      .option('all', '-a 全量恢复')
+      .action(async ({ options }) => {
         try {
           const userTablePath = path.join(this.dataDir, 'analyse_user.json');
           const usersToImport = JSON.parse(await fs.readFile(userTablePath, 'utf-8').catch(() => '[]'));
@@ -67,7 +104,9 @@ export class Data {
           const allUsers = await this.ctx.database.get('analyse_user', {});
           const userToUidMap = new Map(allUsers.map(u => [`${u.channelId}:${u.userId}`, u.uid]));
 
-          for (const tableName of ALL_TABLES.filter(t => t !== 'analyse_user')) {
+          const tablesToProcess = options.all ? ALL_TABLES.filter(t => t !== 'analyse_user') : DEFAULT_BACKUP_TABLES.filter(t => t !== 'analyse_user');
+
+          for (const tableName of tablesToProcess) {
             const filepath = path.join(this.dataDir, `${tableName}.json`);
             const recordsToImport = JSON.parse(await fs.readFile(filepath, 'utf-8').catch(() => '[]'));
             if (!recordsToImport.length) continue;
