@@ -221,15 +221,15 @@ export class Data {
       });
 
     if (this.config.enableOriRecord) {
-      cmd.subcommand('.view <time:string>', '查询消息记录', { authority: 4 })
-        .usage('查询指定时间点后的消息记录，默认查询当前群组。')
+      cmd.subcommand('.view [time:string]', '查询消息记录', { authority: 4 })
+        .usage('查询指定时间点之前的消息记录，默认查询当前群组。')
         .option('user', '-u <user:string> 指定用户')
         .option('guild', '-g <guildId:string> 指定群组')
+        .option('count', '-n <count:number> 指定数量', { fallback: 100 })
         .action(async ({ session, options }, time) => {
-          if (!time) return '请以"YYYY-MM-DD HH:MM:SS"格式输入起始时间';
+          const until = time ? new Date(time) : new Date();
+          if (time && isNaN(until.getTime())) return '时间格式无效';
 
-          const since = new Date(time);
-          if (isNaN(since.getTime())) return '时间格式无效';
           try {
             const userQuery: any = {};
             if (!options.guild && !options.user) {
@@ -246,13 +246,14 @@ export class Data {
 
             const records = await this.ctx.database.get('analyse_cache', {
               uid: { $in: uids },
-              timestamp: { $gte: since }
+              timestamp: { $lte: until }
             }, {
-              sort: { timestamp: 'asc' },
-              limit: 100
+              sort: { timestamp: 'desc' },
+              limit: options.count
             });
 
             if (records.length === 0) return '暂无统计数据';
+            records.reverse();
 
             const recordUids = [...new Set(records.map(r => r.uid))];
             const users = await this.ctx.database.get('analyse_user', { uid: { $in: recordUids } }, ['uid', 'userName', 'userId']);
