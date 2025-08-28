@@ -34,7 +34,7 @@ export class Stat {
     if (options.all) return { uids: undefined, scopeDesc };
     if (options.user) scopeDesc.userId = h.select(options.user, 'at')[0]?.attrs.id ?? options.user.trim();
     if (options.guild) scopeDesc.guildId = options.guild;
-    if (!scopeDesc.guildId && !scopeDesc.userId) scopeDesc.guildId = session.guildId;
+    if (!scopeDesc.guildId && !scopeDesc.userId) scopeDesc.guildId = session.guildId || session.channelId;
     if (!scopeDesc.guildId && !scopeDesc.userId) return { error: '请指定查询范围', scopeDesc };
     if (scopeDesc.guildId) query.channelId = scopeDesc.guildId;
     if (scopeDesc.userId) query.userId = scopeDesc.userId;

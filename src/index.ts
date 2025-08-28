@@ -77,7 +77,7 @@ export const Config: Schema<Config> = Schema.intersect([
 export async function parseQueryScope(ctx: Context, session: Session, options: { user?: string; guild?: string; all?: boolean }): Promise<{ uids?: number[]; error?: string; scopeDesc: { guildId?: string; userId?: string } }> {
     const scopeDesc = { guildId: options.guild, userId: undefined };
     if (options.user) scopeDesc.userId = h.select(options.user, 'at')[0]?.attrs.id ?? options.user.trim();
-    if (!options.all && !scopeDesc.guildId && !scopeDesc.userId) scopeDesc.guildId = session.guildId;
+    if (!options.all && !scopeDesc.guildId && !scopeDesc.userId) scopeDesc.guildId = session.guildId || session.channelId;
     if (!options.all && !scopeDesc.guildId && !scopeDesc.userId) return { error: '请指定查询范围', scopeDesc };
 
     const query: any = {};

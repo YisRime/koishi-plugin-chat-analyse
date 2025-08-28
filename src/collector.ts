@@ -70,10 +70,11 @@ export class Collector {
    * @param session - Koishi 的会话对象。
    */
   private async onMessage(session: Session) {
-    const { userId, channelId, content, timestamp, argv, elements, bot } = session;
-    if (!channelId || !userId || !content?.trim()) return;
+    const { userId, guildId, channelId, content, timestamp, argv, elements, bot } = session;
+    const effectiveChannelId = guildId || channelId;
+    if (!effectiveChannelId || !userId || !content?.trim()) return;
 
-    const cacheKey = `${channelId}:${userId}`;
+    const cacheKey = `${effectiveChannelId}:${userId}`;
     let user: { uid: number; userName: string; } | null;
 
     if (this.userCache.has(cacheKey)) {
@@ -83,16 +84,20 @@ export class Collector {
     } else {
       const promise = (async (): Promise<{ uid: number; userName: string; } | null> => {
         try {
-          const [dbUser] = await this.ctx.database.get('analyse_user', { channelId, userId });
+          const [dbUser] = await this.ctx.database.get('analyse_user', { channelId: effectiveChannelId, userId });
           const currentUserName = session.username ?? '';
 
-          let currentChannelName = this.channelCache.get(channelId);
+          let currentChannelName = this.channelCache.get(effectiveChannelId);
           if (currentChannelName === undefined) {
-            const guild = (bot.getGuild && typeof bot.getGuild === 'function')
-              ? await bot.getGuild(channelId).catch(() => null)
-              : null;
-            currentChannelName = guild?.name ?? '';
-            if (currentChannelName) this.channelCache.set(channelId, currentChannelName);
+            let channelInfo: { name: string } | null = null;
+            if (bot.getGuild && typeof bot.getGuild === 'function') {
+              channelInfo = await bot.getGuild(effectiveChannelId).catch(() => null);
+            }
+            if (!channelInfo && bot.getChannel && typeof bot.getChannel === 'function') {
+              channelInfo = await bot.getChannel(effectiveChannelId).catch(() => null);
+            }
+            currentChannelName = channelInfo?.name ?? '';
+            if (currentChannelName) this.channelCache.set(effectiveChannelId, currentChannelName);
           }
 
           if (dbUser) {
@@ -106,7 +111,7 @@ export class Collector {
             return cacheData;
           }
 
-          const createdUser = await this.ctx.database.create('analyse_user', { channelId, userId, userName: currentUserName, channelName: currentChannelName });
+          const createdUser = await this.ctx.database.create('analyse_user', { channelId: effectiveChannelId, userId, userName: currentUserName, channelName: currentChannelName });
           const cacheData: { uid: number; userName: string; } = { uid: createdUser.uid, userName: createdUser.userName };
           this.userCache.set(cacheKey, cacheData);
           return cacheData;

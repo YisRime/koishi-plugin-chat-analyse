@@ -113,10 +113,11 @@ export class Analyse {
         .option('hours', '-n <hours:number> 指定时长', { fallback: 24 })
         .option('separate', '-p 分时分析')
         .action(async ({ session, options }) => {
-          if (!session.guildId) return '请在群组中使用此命令';
+          const effectiveChannelId = session.guildId || session.channelId;
+          if (!effectiveChannelId) return '请在群组中使用此命令';
 
           try {
-            const guildUsers = await this.ctx.database.get('analyse_user', { channelId: session.guildId });
+            const guildUsers = await this.ctx.database.get('analyse_user', { channelId: effectiveChannelId });
             if (guildUsers.length < 2) return '暂无用户数据';
             const selfUser = guildUsers.find(u => u.userId === session.userId);
             const guildUserUids = guildUsers.map(u => u.uid);

@@ -232,9 +232,10 @@ export class Data {
 
           try {
             const userQuery: any = {};
+            const effectiveChannelId = session.guildId || session.channelId;
             if (!options.guild && !options.user) {
-              if (!session.guildId) return '请指定查询范围';
-              userQuery.channelId = session.guildId;
+              if (!effectiveChannelId) return '请指定查询范围';
+              userQuery.channelId = effectiveChannelId;
             } else {
               if (options.guild) userQuery.channelId = options.guild;
               if (options.user) userQuery.userId = Element.select(options.user, 'at')[0]?.attrs.id ?? options.user;
