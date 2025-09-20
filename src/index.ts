@@ -1,5 +1,5 @@
 import { Context, Schema, Session, h } from 'koishi';
-import { Collector } from './Collector';
+import { Collector } from './Dollector';
 import { Stat } from './Stat';
 import { WhoAt } from './WhoAt';
 import { Data } from './Data';
