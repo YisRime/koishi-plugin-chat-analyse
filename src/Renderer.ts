@@ -347,12 +347,13 @@ export class Renderer {
    * @public
    * @method renderWordCloud
    * @description 将词频数据渲染成一张词云图片，使用 Puppeteer 和 wordcloud2.js。
-   * @param {WordCloudData} data - 包含标题、时间和词汇列表的对象。
+   * @param {WordCloudData} data - 包含标题、时间和词汇列表，以及从config传入的options。
    * @returns {AsyncGenerator<Buffer>} - 一个异步生成器，产出渲染后的图片 Buffer。
    */
   public async *renderWordCloud(data: WordCloudData): AsyncGenerator<Buffer> {
     const { title, time, words } = data;
-    if (!words?.length) return;
+    const options = (data as any).options;
+    if (!words?.length || !options) return;
 
     const wordsJson = JSON.stringify(words);
     const selectedPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
@@ -360,8 +361,6 @@ export class Renderer {
     const weights = words.map(w => w[1]);
     const maxWeight = Math.max(...weights, 1);
     const minWeight = Math.min(...weights);
-    const MAX_FONT_SIZE = 64;
-    const MIN_FONT_SIZE = 4;
 
     const cardHtml = `
       <div class="container">
@@ -370,31 +369,55 @@ export class Renderer {
           <h1 class="title-text">${title}</h1>
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
-        <div id="wordcloud-container" style="width: 512px; height: 512px; margin: auto;"></div>
+        <div style="width: 512px; height: 512px; margin: auto; position: relative;">
+          <canvas id="wordcloud-canvas" width="512" height="512"></canvas>
+        </div>
         <script>${wordCloudScript}</script>
         <script>
+          const canvas = document.getElementById('wordcloud-canvas');
+          const maskImageUrl = ${JSON.stringify(options.maskImage)};
           const palette = ${JSON.stringify(selectedPalette)};
-          WordCloud(document.getElementById('wordcloud-container'), {
-            fontFamily: '"Noto Sans CJK SC", "Arial", sans-serif',
-            weightFactor: (size) => {
-              if (${maxWeight} === ${minWeight}) return (${MIN_FONT_SIZE} + ${MAX_FONT_SIZE}) / 2;
-              const normalizedWeight = (size - ${minWeight}) / (${maxWeight} - ${minWeight});
-              return ${MIN_FONT_SIZE} + normalizedWeight * (${MAX_FONT_SIZE} - ${MIN_FONT_SIZE});
-            },
-            color: (word, weight, fontSize, distance, theta) => {
-              return palette[Math.floor(Math.random() * palette.length)];
-            },
+
+          const wordCloudOptions = {
             list: ${wordsJson},
-            shape: 'square',
-            gridSize: 1,
-            ellipticity: 1,
-            rotateRatio: 1,
-            minRotation: -Math.PI / 4,
-            maxRotation: Math.PI / 4,
-            backgroundColor: 'transparent',
-            clearCanvas: true,
+            fontFamily: ${JSON.stringify(options.fontFamily)},
+            weightFactor: (size) => {
+              if (${maxWeight} === ${minWeight}) return (${options.minFontSize} + ${options.maxFontSize}) / 2;
+              const normalizedWeight = (size - ${minWeight}) / (${maxWeight} - ${minWeight});
+              return ${options.minFontSize} + normalizedWeight * (${options.maxFontSize} - ${options.minFontSize});
+            },
+            color: () => palette[Math.floor(Math.random() * palette.length)],
+            shape: ${JSON.stringify(options.shape)},
+            gridSize: ${options.gridSize},
+            rotateRatio: ${options.rotateRatio},
+            minRotation: ${options.minRotation},
+            maxRotation: ${options.maxRotation},
+            ellipticity: ${options.ellipticity},
             shuffle: true,
-          });
+            drawOutOfBoundWords: false,
+            backgroundColor: 'transparent',
+          };
+
+          function drawWordCloud(isMasked) {
+            const finalOptions = { ...wordCloudOptions, clearCanvas: !isMasked };
+            WordCloud(canvas, finalOptions);
+          }
+
+          if (maskImageUrl) {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              drawWordCloud(true);
+            };
+            img.onerror = () => {
+              drawWordCloud(false);
+            };
+            img.src = maskImageUrl;
+          } else {
+            drawWordCloud(false);
+          }
         </script>
       </div>`;
 
