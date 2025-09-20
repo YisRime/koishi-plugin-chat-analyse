@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-chat-analyse",
   "description": "强大而全面的聊天数据分析插件。支持多维度统计（命令、发言、消息类型、活跃度），可生成发言排行、词云图，并提供完善的数据管理。",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],
@@ -35,7 +35,7 @@
     "koishi-plugin-puppeteer": "^3.5.2"
   },
   "peerDependencies": {
-    "koishi": "4.18.8"
+    "koishi": "^4.18.8"
   },
   "dependencies": {
     "@node-rs/jieba": "^2.0.1"
