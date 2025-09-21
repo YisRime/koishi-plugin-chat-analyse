@@ -97,7 +97,7 @@ export class Analyse {
             session.send(`正在生成词云，热门词汇：${topWordsPreview}...`);
 
             const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云', timeRange: options.hours });
-            const imageGenerator = this.renderer.renderWordCloud({ title, time: new Date(), words: wordList });
+            const imageGenerator = this.renderer.renderWordCloud({ title, time: new Date(), words: wordList }, this.config);
             for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));
 
           } catch (error) {

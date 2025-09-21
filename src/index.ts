@@ -41,6 +41,16 @@ export interface Config {
   cacheRetentionDays: number;
   enableSimilarActivity: boolean;
   enableAutoBackup: boolean;
+  ellipticity: number;
+  rotateRatio: number;
+  minRotation: number;
+  maxRotation: number;
+  minFontSize: number;
+  maxFontSize: number;
+  gridSize: number;
+  fontFamily: string;
+  shape: 'square' | 'circle' | 'cardioid' | 'diamond' | 'triangle-forward' | 'triangle' | 'pentagon' | 'star';
+  maskImage: string;
 }
 
 /** @description 插件的配置项定义 */
@@ -65,6 +75,18 @@ export const Config: Schema<Config> = Schema.intersect([
     enableWordCloud: Schema.boolean().default(true).description('启用词云生成'),
     enableSimilarActivity: Schema.boolean().default(true).description('启用相似活跃分析'),
   }).description('高级分析配置'),
+  Schema.object({
+    ellipticity: Schema.number().min(0).max(1).default(1).description('长宽比'),
+    rotateRatio: Schema.number().min(0).max(1).default(0.5).description('旋转比'),
+    minRotation: Schema.number().default(Math.PI / 2).description('最小旋转角'),
+    maxRotation: Schema.number().default(Math.PI / 2).description('最大旋转角'),
+    minFontSize: Schema.number().min(1).default(4).description('最小字号'),
+    maxFontSize: Schema.number().min(1).default(64).description('最大字号'),
+    gridSize: Schema.number().min(0).default(1).description('词云间距'),
+    fontFamily: Schema.string().default('"Noto Sans CJK SC", "Arial", sans-serif').description('词云字体'),
+    shape: Schema.union(['square', 'circle', 'cardioid', 'diamond', 'triangle-forward', 'triangle', 'pentagon', 'star']).default('square').description('词云形状'),
+    maskImage: Schema.string().role('link').description('词云蒙版 (一个图片的URL，会覆盖形状设置)'),
+  }).description('词云生成配置'),
 ]);
 
 /**
