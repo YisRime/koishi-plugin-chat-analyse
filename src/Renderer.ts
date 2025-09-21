@@ -233,6 +233,13 @@ export class Renderer {
     }
   }
 
+  /**
+   * @public
+   * @method renderLineChart
+   * @description 将时间序列数据（如活跃度）渲染成一张基于 SVG 的折线图。支持单组或多组数据进行对比。
+   * @param {LineChartData} data - 包含标题、时间、数据系列和标签的对象。
+   * @returns {AsyncGenerator<Buffer>} - 一个异步生成器，产出渲染后的图片 Buffer。
+   */
   public async *renderLineChart(data: LineChartData): AsyncGenerator<Buffer> {
     const { title, time, series, labels } = data;
     const seriesColors = series.map(() => {
@@ -338,8 +345,11 @@ export class Renderer {
     const minWeight = Math.min(...weights);
 
     const wordCount = words.length;
-    const maxFontSize = Math.max(32, Math.round(600 / Math.log1p(wordCount)));
-    const minFontSize = Math.max(4, Math.round(maxFontSize / 10));
+    const area = 600 * 600;
+    const avgAreaPerWord = area / wordCount;
+    let maxFontSize = Math.round(Math.sqrt(avgAreaPerWord) * 1.8);
+    maxFontSize = Math.max(16, Math.min(160, maxFontSize));
+    const minFontSize = Math.max(4, Math.round(maxFontSize / 8));
 
     const cardHtml = `
       <div class="container" style="width: 600px;">
@@ -369,8 +379,10 @@ export class Renderer {
             maxRotation: ${config.maxRotation},
             rotationSteps: ${config.rotationSteps},
             backgroundColor: 'transparent',
-            clearCanvas: true,
+            drawOutOfBound: true,
+            clearCanvas: false,
             shrinkToFit: true,
+            abortThreshold: 1,
             rotateRatio: 1,
             shuffle: true,
             gridSize: 1,

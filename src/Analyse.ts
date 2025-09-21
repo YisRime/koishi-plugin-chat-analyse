@@ -92,12 +92,13 @@ export class Analyse {
 
             const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
             const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
+            const limitedWordList = this.config.MaxWords > 0 ? wordList.slice(0, this.config.MaxWords) : wordList;
 
-            const topWordsPreview = wordList.slice(0, 10).map(item => item[0]).join(', ');
-            session.send(`正在生成词云，热门词汇：${topWordsPreview}...`);
+            const topWordsPreview = limitedWordList.slice(0, 10).map(item => item[0]).join(', ');
+            session.send(`正在基于 ${wordList.length} 个词生成词云：${topWordsPreview}...`);
 
             const title = await generateTitle(this.ctx, scope.scopeDesc, { main: '词云', timeRange: options.hours });
-            const imageGenerator = this.renderer.renderWordCloud({ title, time: new Date(), words: wordList }, this.config);
+            const imageGenerator = this.renderer.renderWordCloud({ title, time: new Date(), words: limitedWordList }, this.config);
             for await (const buffer of imageGenerator) await session.send(h.image(buffer, 'image/png'));
 
           } catch (error) {
