@@ -287,7 +287,7 @@ export class Renderer {
       const legendRows = Math.ceil(series.length / 3);
       legendHeight = 15 + (legendRows * 20);
 
-      const LEGEND_START_Y = 285;
+      const LEGEND_START_Y = 300;
       const columnWidth = 560 / 3;
       series.forEach((s, seriesIndex) => {
         const rowIndex = Math.floor(seriesIndex / 3);
@@ -300,7 +300,8 @@ export class Renderer {
       });
     }
 
-    const svgHeight = 280 + legendHeight;
+    const totalLegendSpace = legendHeight > 0 ? legendHeight + 15 : 0;
+    const svgHeight = 280 + totalLegendSpace;
     const totalMessages = series.reduce((sum, s) => sum + s.data.reduce((a, b) => a + b, 0), 0);
     const cardHtml = `
       <div class="container" style="width: 600px;">
@@ -340,8 +341,8 @@ export class Renderer {
     const minWeight = Math.min(...weights);
 
     const wordCount = words.length;
-    const maxFontSize = Math.max(20, Math.round(400 / Math.log1p(wordCount)));
-    const minFontSize = Math.max(4, Math.round(maxFontSize / 12));
+    const maxFontSize = Math.max(20, Math.round(512 / Math.log1p(wordCount)));
+    const minFontSize = Math.max(6, Math.round(maxFontSize / 10));
 
     const cardHtml = `
       <div class="container" style="width: 600px;">
