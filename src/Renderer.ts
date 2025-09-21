@@ -282,26 +282,32 @@ export class Renderer {
         svgElements += `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"/>`;
     });
 
-    let legendHeight = 0;
+    const chartAreaHeight = 280;
+    const legendTopMargin = 15;
+    const legendBottomMargin = 15;
+    let legendBlockHeight = 0;
+
     if (series.length > 1) {
       const legendRows = Math.ceil(series.length / 3);
-      legendHeight = 15 + (legendRows * 20);
+      const legendRowHeight = 20;
+      const legendInternalPadding = 5;
+      legendBlockHeight = (legendRows * legendRowHeight) + legendInternalPadding;
 
-      const LEGEND_START_Y = 300;
+      const LEGEND_START_Y = chartAreaHeight + legendTopMargin;
       const columnWidth = 560 / 3;
       series.forEach((s, seriesIndex) => {
         const rowIndex = Math.floor(seriesIndex / 3);
         const colIndex = seriesIndex % 3;
         const legendX = 40 + (colIndex * columnWidth);
-        const legendY = LEGEND_START_Y + (rowIndex * 20);
+        const legendY = LEGEND_START_Y + (rowIndex * legendRowHeight);
         const color = seriesColors[seriesIndex % seriesColors.length];
         svgElements += `<rect x="${legendX}" y="${legendY - 8}" width="12" height="8" fill="${color}" rx="2"/>`;
         svgElements += `<text x="${legendX + 18}" y="${legendY}" font-size="12" fill="var(--text-color)">${s.name}</text>`;
       });
     }
 
-    const totalLegendSpace = legendHeight > 0 ? legendHeight + 15 : 0;
-    const svgHeight = 280 + totalLegendSpace;
+    const totalLegendSpace = legendBlockHeight > 0 ? legendTopMargin + legendBlockHeight + legendBottomMargin : 0;
+    const svgHeight = chartAreaHeight + totalLegendSpace;
     const totalMessages = series.reduce((sum, s) => sum + s.data.reduce((a, b) => a + b, 0), 0);
     const cardHtml = `
       <div class="container" style="width: 600px;">
@@ -341,7 +347,7 @@ export class Renderer {
     const minWeight = Math.min(...weights);
 
     const wordCount = words.length;
-    const maxFontSize = Math.max(20, Math.round(512 / Math.log1p(wordCount)));
+    const maxFontSize = Math.max(20, Math.round(600 / Math.log1p(wordCount)));
     const minFontSize = Math.max(6, Math.round(maxFontSize / 10));
 
     const cardHtml = `
