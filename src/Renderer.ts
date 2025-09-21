@@ -382,7 +382,6 @@ export class Renderer {
             drawOutOfBound: true,
             clearCanvas: false,
             shrinkToFit: true,
-            abortThreshold: 1,
             rotateRatio: 1,
             shuffle: true,
             gridSize: 1,
