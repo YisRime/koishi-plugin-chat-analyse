@@ -120,9 +120,10 @@ export class Analyse {
             const guildUsers = await this.ctx.database.get('analyse_user', { channelId: effectiveChannelId });
             if (guildUsers.length < 2) return '暂无用户数据';
             const selfUser = guildUsers.find(u => u.userId === session.userId);
+            if (!selfUser) return '暂无用户数据';
             const guildUserUids = guildUsers.map(u => u.uid);
             const uidToNameMap = new Map(guildUsers.map(u => [u.uid, u.userName]));
-
+            const scopeDesc = { guildId: effectiveChannelId };
             const until = new Date();
             let analysisConfig: {
               title: string;
@@ -135,10 +136,11 @@ export class Analyse {
 
             if (options.separate) {
               const { hours } = options;
+              const title = await generateTitle(this.ctx, scopeDesc, { main: '相似活跃分析', timeRange: hours, timeUnit: '小时' });
               analysisConfig = {
                 points: hours,
                 since: new Date(until.getTime() - hours * Time.hour),
-                title: `${hours}小时相似活跃分析`,
+                title,
                 labels: Array.from({ length: hours }, (_, i) => String(new Date(until.getTime() - (hours - 1 - i) * Time.hour).getHours())),
                 getIndex: (timestamp) => {
                   const diff = until.getTime() - timestamp.getTime();
@@ -154,11 +156,12 @@ export class Analyse {
               const hoursToAnalyse = daysToAnalyse * 24;
               const currentHour = until.getHours();
               const labels = Array.from({ length: 24 }, (_, i) => String((currentHour - (23 - i) + 24) % 24));
+              const title = await generateTitle(this.ctx, scopeDesc, { main: '相似活跃分析', timeRange: daysToAnalyse, timeUnit: '天' });
 
               analysisConfig = {
                 points: 24,
                 since: new Date(until.getTime() - hoursToAnalyse * Time.hour),
-                title: `${daysToAnalyse}天相似活跃分析`,
+                title,
                 labels: labels,
                 getIndex: (timestamp) => timestamp.getHours(),
                 reorderVector: (vector) => labels.map(label => vector[parseInt(label)]),

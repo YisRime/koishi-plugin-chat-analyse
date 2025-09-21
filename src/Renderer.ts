@@ -233,13 +233,6 @@ export class Renderer {
     }
   }
 
-  /**
-   * @public
-   * @method renderLineChart
-   * @description 将时间序列数据（如活跃度）渲染成一张基于 SVG 的折线图。支持单组或多组数据进行对比。
-   * @param {LineChartData} data - 包含标题、时间、数据系列和标签的对象。
-   * @returns {AsyncGenerator<Buffer>} - 一个异步生成器，产出渲染后的图片 Buffer。
-   */
   public async *renderLineChart(data: LineChartData): AsyncGenerator<Buffer> {
     const { title, time, series, labels } = data;
     const seriesColors = series.map(() => {
@@ -283,17 +276,15 @@ export class Renderer {
     });
 
     const chartAreaHeight = 280;
-    const legendTopMargin = 15;
-    const legendBottomMargin = 15;
+    const legendMargin = 15;
     let legendBlockHeight = 0;
 
     if (series.length > 1) {
       const legendRows = Math.ceil(series.length / 3);
       const legendRowHeight = 20;
-      const legendInternalPadding = 5;
-      legendBlockHeight = (legendRows * legendRowHeight) + legendInternalPadding;
+      legendBlockHeight = legendRows * legendRowHeight;
 
-      const LEGEND_START_Y = chartAreaHeight + legendTopMargin;
+      const LEGEND_START_Y = chartAreaHeight + legendMargin;
       const columnWidth = 560 / 3;
       series.forEach((s, seriesIndex) => {
         const rowIndex = Math.floor(seriesIndex / 3);
@@ -306,7 +297,7 @@ export class Renderer {
       });
     }
 
-    const totalLegendSpace = legendBlockHeight > 0 ? legendTopMargin + legendBlockHeight + legendBottomMargin : 0;
+    const totalLegendSpace = legendBlockHeight > 0 ? legendMargin + legendBlockHeight + legendMargin : 0;
     const svgHeight = chartAreaHeight + totalLegendSpace;
     const totalMessages = series.reduce((sum, s) => sum + s.data.reduce((a, b) => a + b, 0), 0);
     const cardHtml = `
@@ -347,8 +338,8 @@ export class Renderer {
     const minWeight = Math.min(...weights);
 
     const wordCount = words.length;
-    const maxFontSize = Math.max(20, Math.round(600 / Math.log1p(wordCount)));
-    const minFontSize = Math.max(6, Math.round(maxFontSize / 10));
+    const maxFontSize = Math.max(32, Math.round(600 / Math.log1p(wordCount)));
+    const minFontSize = Math.max(4, Math.round(maxFontSize / 10));
 
     const cardHtml = `
       <div class="container" style="width: 600px;">
@@ -357,7 +348,7 @@ export class Renderer {
           <h1 class="title-text">${title}</h1>
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
-        <div style="width: 600px; height: 600px; margin: auto; padding: 10px 0;">
+        <div style="width: 600px; height: 600px; margin: auto;">
           <canvas id="wordcloud-container" width="600" height="600"></canvas>
         </div>
         <script>${wordCloudScript}</script>
