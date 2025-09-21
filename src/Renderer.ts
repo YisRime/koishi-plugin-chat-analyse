@@ -34,29 +34,6 @@ export interface LineChartData {
  * @description 负责将结构化的数据渲染为设计精美的 PNG 图片。
  */
 export class Renderer {
-
-  private readonly COLOR_PALETTES = [
-    // --- 4组近似色 ---
-    // 1. Oceanic Blues: 更深邃、专业的蓝色系
-    ['#A9D6E5', '#89C2D9', '#61A5C2', '#2A6F97', '#012A4A'],
-    // 2. Forest Greens: 丰富、饱和的绿色系
-    ['#ADDDBC', '#80C9A7', '#52B69A', '#34A0A4', '#168AAD'],
-    // 3. Royal Purples: 优雅、浓郁的紫色系
-    ['#C792DF', '#AB69C6', '#9040AD', '#7B2CBF', '#5A189A'],
-    // 4. Sunset Glow: 温暖、明亮的日落色系
-    ['#FFDD77', '#FFC94A', '#FFB703', '#F8961E', '#E85D04'],
-
-    // --- 4组缤纷色 ---
-    // 5. Vivid Candy: 鲜艳的糖果色
-    ['#E63946', '#588157', '#A8DADC', '#457B9D', '#1D3557'],
-    // 6. Retro Groove: 复古风格
-    ['#264653', '#2A9D8F', '#F0C151', '#F4A261', '#E76F51'],
-    // 7. Neon Pop: 高对比度的现代色彩组合
-    ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#073B4C'],
-    // 8. Bold Impact: 大胆且冲击力强的撞色
-    ['#D90429', '#F95738', '#F2C57C', '#0C7C59', '#003E1F']
-  ];
-
   private readonly COMMON_STYLE = `
     :root {
       --card-bg: #fff; --text-color: #111827; --header-color: #111827;
@@ -265,39 +242,37 @@ export class Renderer {
    */
   public async *renderLineChart(data: LineChartData): AsyncGenerator<Buffer> {
     const { title, time, series, labels } = data;
-    const colorfulPalettes = this.COLOR_PALETTES.slice(4);
-    const selectedPalette = colorfulPalettes[Math.floor(Math.random() * colorfulPalettes.length)];
-    const shuffledColors = [...selectedPalette].sort(() => 0.5 - Math.random());
-    const seriesColors = series.map((_, index) => shuffledColors[index % shuffledColors.length]);
+    const seriesColors = series.map(() => {
+      const hue = Math.floor(Math.random() * 360);
+      const saturation = Math.floor(Math.random() * 30 + 70);
+      const lightness = Math.floor(Math.random() * 20 + 50);
+      return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    });
 
-    const width = 600, height = 320;
-    const padding = { top: 10, right: 20, bottom: 70, left: 20 };
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
     const maxVal = Math.max(1, ...series.flatMap(s => s.data));
     const yTickCount = 5;
     const yTickValue = Math.ceil(maxVal / yTickCount);
     const yAxisMax = yTickValue * yTickCount;
 
     const getX = (index: number) => {
-      if (labels.length <= 1) return padding.left + chartWidth / 2;
-      return padding.left + (index / (labels.length - 1)) * chartWidth;
+      if (labels.length <= 1) return 300;
+      return 20 + (index / (labels.length - 1)) * 560;
     };
-    const getY = (value: number) => padding.top + chartHeight - (value / yAxisMax) * chartHeight;
+    const getY = (value: number) => 250 - (value / yAxisMax) * 240;
 
     let svgElements = '';
 
     for (let i = 0; i <= yTickCount; i++) {
         const y = getY(i * yTickValue);
         const value = i * yTickValue;
-        svgElements += `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--border-color)" stroke-width="1"/>`;
-        svgElements += `<text x="${padding.left - 8}" y="${y + 4}" font-size="10" fill="var(--sub-text-color)" text-anchor="end">${value}</text>`;
+        svgElements += `<line x1="${20}" y1="${y}" x2="580" y2="${y}" stroke="var(--border-color)" stroke-width="1"/>`;
+        svgElements += `<text x="${20 - 8}" y="${y + 4}" font-size="10" fill="var(--sub-text-color)" text-anchor="end">${value}</text>`;
     }
 
     labels.forEach((label, index) => {
         if (index % Math.ceil(labels.length / 12) === 0) {
             const x = getX(index);
-            svgElements += `<text x="${x}" y="${height - padding.bottom + 20}" font-size="10" fill="var(--sub-text-color)" text-anchor="middle">${label}</text>`;
+            svgElements += `<text x="${x}" y="270" font-size="10" fill="var(--sub-text-color)" text-anchor="middle">${label}</text>`;
         }
     });
 
@@ -308,15 +283,13 @@ export class Renderer {
     });
 
     if (series.length > 1) {
-      const ITEMS_PER_ROW = 3;
-      const ROW_HEIGHT = 20;
-      const LEGEND_START_Y = height - padding.bottom + 45;
-      const columnWidth = chartWidth / ITEMS_PER_ROW;
+      const LEGEND_START_Y = 295;
+      const columnWidth = 560 / 3;
       series.forEach((s, seriesIndex) => {
-        const rowIndex = Math.floor(seriesIndex / ITEMS_PER_ROW);
-        const colIndex = seriesIndex % ITEMS_PER_ROW;
-        const legendX = padding.left + (colIndex * columnWidth);
-        const legendY = LEGEND_START_Y + (rowIndex * ROW_HEIGHT);
+        const rowIndex = Math.floor(seriesIndex / 3);
+        const colIndex = seriesIndex % 3;
+        const legendX = 20 + (colIndex * columnWidth);
+        const legendY = LEGEND_START_Y + (rowIndex * 20);
         const color = seriesColors[seriesIndex];
         svgElements += `<rect x="${legendX}" y="${legendY - 8}" width="12" height="8" fill="${color}" rx="2"/>`;
         svgElements += `<text x="${legendX + 18}" y="${legendY}" font-size="12" fill="var(--text-color)">${s.name}</text>`;
@@ -332,7 +305,7 @@ export class Renderer {
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
         <div class="chart-wrapper">
-          <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+          <svg width="600" height="320" xmlns="http://www.w3.org/2000/svg">
             ${svgElements}
           </svg>
         </div>
@@ -357,8 +330,6 @@ export class Renderer {
     if (!words?.length) return;
 
     const wordsJson = JSON.stringify(words);
-    const selectedPalette = this.COLOR_PALETTES[Math.floor(Math.random() * this.COLOR_PALETTES.length)];
-
     const weights = words.map(w => w[1]);
     const maxWeight = Math.max(...weights, 1);
     const minWeight = Math.min(...weights);
@@ -376,7 +347,6 @@ export class Renderer {
         <script>${wordCloudScript}</script>
         <script>
           const canvas = document.getElementById('wordcloud-container');
-          const palette = ${JSON.stringify(selectedPalette)};
           const options = {
             list: ${wordsJson},
             fontFamily: ${JSON.stringify(config.fontFamily)},
@@ -385,17 +355,17 @@ export class Renderer {
               const normalizedWeight = (size - ${minWeight}) / (${maxWeight} - ${minWeight});
               return ${config.minFontSize} + normalizedWeight * (${config.maxFontSize} - ${config.minFontSize});
             },
-            color: (word, weight, fontSize, distance, theta) => {
-              return palette[Math.floor(Math.random() * palette.length)];
-            },
+            color: ${JSON.stringify(config.color)},
             shape: ${JSON.stringify(config.shape)},
             gridSize: ${config.gridSize},
             ellipticity: ${config.ellipticity},
             rotateRatio: ${config.rotateRatio},
             minRotation: ${config.minRotation},
             maxRotation: ${config.maxRotation},
+            rotationSteps: ${config.rotationSteps},
             backgroundColor: 'transparent',
             clearCanvas: true,
+            shrinkToFit: true,
             shuffle: true,
           };
 
