@@ -135,13 +135,13 @@ export class Renderer {
   private async htmlToImage(fullHtmlContent: string): Promise<Buffer | null> {
     const page = await this.ctx.puppeteer.page();
     try {
-      await page.setViewport({ width: 720, height: 1080, deviceScaleFactor: 2.0 });
+      await page.setViewport({ width: 1080, height: 720, deviceScaleFactor: 1.0 });
       await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' });
       const { width, height } = await page.evaluate(() => ({
           width: document.body.scrollWidth,
           height: document.body.scrollHeight
       }));
-      await page.setViewport({ width, height, deviceScaleFactor: 2.0 });
+      await page.setViewport({ width, height, deviceScaleFactor: 1.0 });
       return await page.screenshot({ type: 'png', omitBackground: true });
     } catch (error) {
       this.ctx.logger.error('图片渲染失败:', error);
@@ -370,8 +370,8 @@ export class Renderer {
           <h1 class="title-text">${title}</h1>
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
-        <div style="width: 512px; height: 512px; margin: auto;">
-          <canvas id="wordcloud-container" width="512" height="512"></canvas>
+        <div style="width: 600px; height: 600px; margin: auto;">
+          <canvas id="wordcloud-container" width="600" height="600"></canvas>
         </div>
         <script>${wordCloudScript}</script>
         <script>
