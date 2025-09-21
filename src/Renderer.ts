@@ -276,12 +276,12 @@ export class Renderer {
     });
 
     const chartAreaHeight = 280;
-    const legendMargin = 15;
+    const legendMargin = 20;
     let legendBlockHeight = 0;
 
     if (series.length > 1) {
       const legendRows = Math.ceil(series.length / 3);
-      const legendRowHeight = 20;
+      const legendRowHeight = 15;
       legendBlockHeight = legendRows * legendRowHeight;
 
       const LEGEND_START_Y = chartAreaHeight + legendMargin;
