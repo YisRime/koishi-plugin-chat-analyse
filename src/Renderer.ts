@@ -345,7 +345,7 @@ export class Renderer {
     const minWeight = Math.max(Math.min(...weights), 1);
 
     const wordCount = words.length;
-    let calculatedMaxFontSize = Math.round(2048 / Math.pow(wordCount, 0.66));
+    let calculatedMaxFontSize = Math.round(2560 / Math.pow(wordCount, 0.66));
     let calculatedMinFontSize = Math.round(calculatedMaxFontSize / 6);
     const maxFontSize = Math.max(4, Math.min(128, calculatedMaxFontSize));
     const minFontSize = Math.max(4, Math.min(maxFontSize, calculatedMinFontSize));
