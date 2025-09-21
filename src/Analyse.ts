@@ -136,7 +136,7 @@ export class Analyse {
 
             if (options.separate) {
               const { hours } = options;
-              const title = await generateTitle(this.ctx, scopeDesc, { main: '相似活跃分析', timeRange: hours, timeUnit: '小时' });
+              const title = await generateTitle(this.ctx, scopeDesc, { main: '相似活跃', timeRange: hours, timeUnit: '小时' });
               analysisConfig = {
                 points: hours,
                 since: new Date(until.getTime() - hours * Time.hour),
@@ -156,7 +156,7 @@ export class Analyse {
               const hoursToAnalyse = daysToAnalyse * 24;
               const currentHour = until.getHours();
               const labels = Array.from({ length: 24 }, (_, i) => String((currentHour - (23 - i) + 24) % 24));
-              const title = await generateTitle(this.ctx, scopeDesc, { main: '相似活跃分析', timeRange: daysToAnalyse, timeUnit: '天' });
+              const title = await generateTitle(this.ctx, scopeDesc, { main: '相似活跃', timeRange: daysToAnalyse, timeUnit: '天' });
 
               analysisConfig = {
                 points: 24,

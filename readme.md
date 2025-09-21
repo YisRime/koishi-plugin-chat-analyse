@@ -164,8 +164,6 @@
 | `shape` | **词云形状**：预设值包括 `circle`, `cardioid`, `diamond`, `square`, `triangle`, `pentagon`, `star`。 | `square` |
 | `maskImage` | **蒙版图片**：提供一个图片的URL作为词云的形状蒙版。**注意：这会覆盖“词云形状”选项。** | (空) |
 | `fontFamily` | **词云字体**：用于渲染词云的字体列表。 | `"Noto Sans CJK SC", "Arial", sans-serif` |
-| `minFontSize` | **最小字号**：权重最小的单词所使用的字号(px)。 | `4` |
-| `maxFontSize` | **最大字号**：权重最大的单词所使用的字号(px)。 | `64` |
 | `ellipticity` | **长宽比**：形状的扁平程度(0-1)，仅对非方形形状有效。 | `1` |
 | `minRotation` | **最小旋转角**：单词随机旋转的最小角度(弧度)。 | `-1.570796` (-π/2) |
 | `maxRotation` | **最大旋转角**：单词随机旋转的最大角度(弧度)。 | `1.570796` (π/2) |

@@ -297,7 +297,7 @@ export class Renderer {
       });
     }
 
-    const totalLegendSpace = legendBlockHeight > 0 ? legendMargin + legendBlockHeight + legendMargin : 0;
+    const totalLegendSpace = legendBlockHeight > 0 ? legendMargin + legendBlockHeight : 0;
     const svgHeight = chartAreaHeight + totalLegendSpace;
     const totalMessages = series.reduce((sum, s) => sum + s.data.reduce((a, b) => a + b, 0), 0);
     const cardHtml = `
