@@ -345,11 +345,10 @@ export class Renderer {
     const minWeight = Math.min(...weights);
 
     const wordCount = words.length;
-    const area = 600 * 600;
-    const avgAreaPerWord = area / wordCount;
-    let maxFontSize = Math.round(Math.sqrt(avgAreaPerWord) * 1.8);
-    maxFontSize = Math.max(16, Math.min(160, maxFontSize));
-    const minFontSize = Math.max(4, Math.round(maxFontSize / 8));
+    let calculatedMaxFontSize = Math.round(1200 / Math.sqrt(wordCount));
+    let calculatedMinFontSize = Math.round(calculatedMaxFontSize / 6);
+    const maxFontSize = Math.max(4, Math.min(128, calculatedMaxFontSize));
+    const minFontSize = Math.max(4, Math.min(maxFontSize, calculatedMinFontSize));
 
     const cardHtml = `
       <div class="container" style="width: 600px;">
