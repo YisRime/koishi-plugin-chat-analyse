@@ -342,13 +342,17 @@ export class Renderer {
     const wordsJson = JSON.stringify(words);
     const weights = words.map(w => w[1]);
     const maxWeight = Math.max(...weights, 1);
-    const minWeight = Math.min(...weights);
+    const minWeight = Math.max(Math.min(...weights), 1);
 
     const wordCount = words.length;
-    let calculatedMaxFontSize = Math.round(1200 / Math.sqrt(wordCount));
+    let calculatedMaxFontSize = Math.round(1600 / Math.sqrt(wordCount));
     let calculatedMinFontSize = Math.round(calculatedMaxFontSize / 6);
     const maxFontSize = Math.max(4, Math.min(128, calculatedMaxFontSize));
     const minFontSize = Math.max(4, Math.min(maxFontSize, calculatedMinFontSize));
+
+    const logMaxWeight = Math.log1p(maxWeight);
+    const logMinWeight = Math.log1p(minWeight);
+    const logWeightRange = logMaxWeight - logMinWeight <= 0 ? 1 : logMaxWeight - logMinWeight;
 
     const cardHtml = `
       <div class="container" style="width: 600px;">
@@ -368,7 +372,7 @@ export class Renderer {
             fontFamily: ${JSON.stringify(config.fontFamily)},
             weightFactor: (size) => {
               if (${maxWeight} === ${minWeight}) return (${minFontSize} + ${maxFontSize}) / 2;
-              const normalizedWeight = (size - ${minWeight}) / (${maxWeight} - ${minWeight});
+              const normalizedWeight = (Math.log1p(size) - ${logMinWeight}) / (${logWeightRange});
               return ${minFontSize} + normalizedWeight * (${maxFontSize} - ${minFontSize});
             },
             color: ${JSON.stringify(config.color)},
@@ -393,7 +397,6 @@ export class Renderer {
             maskImage.onload = () => {
               const ctx = canvas.getContext('2d');
               ctx.drawImage(maskImage, 0, 0, canvas.width, canvas.height);
-              options.clearCanvas = false; // Don't clear the mask image
               WordCloud(canvas, options);
             };
             maskImage.src = maskImageUrl;
