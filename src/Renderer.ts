@@ -50,7 +50,7 @@ export class Renderer {
     .container {
       display: inline-block; background: var(--card-bg); border-radius: 12px;
       padding: 0; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,.05);
-      width: 600px;
+      min-width: 480px; max-width: 640px;
     }
     .header {
       padding: 12px 16px;
@@ -61,7 +61,7 @@ export class Renderer {
     }
     .title-text {
       font-size: 16px; font-weight: 600; color: var(--header-color);
-      margin: 0; text-align: center;
+      margin: 0 8px; text-align: center;
     }
     .stat-chip, .time-label {
       display: inline-flex; align-items: baseline; padding: 4px 8px;
@@ -112,7 +112,7 @@ export class Renderer {
   private async htmlToImage(fullHtmlContent: string): Promise<Buffer | null> {
     const page = await this.ctx.puppeteer.page();
     try {
-      await page.setViewport({ width: 1080, height: 720, deviceScaleFactor: 1.0 });
+      await page.setViewport({ width: 800, height: 600, deviceScaleFactor: 1.0 });
       await page.setContent(fullHtmlContent, { waitUntil: 'networkidle0' });
       const { width, height } = await page.evaluate(() => ({
           width: document.body.scrollWidth,
@@ -255,8 +255,8 @@ export class Renderer {
     const yAxisMax = yTickValue * yTickCount;
 
     const getX = (index: number) => {
-      if (labels.length <= 1) return 300;
-      return 20 + (index / (labels.length - 1)) * 560;
+      if (labels.length <= 1) return 320;
+      return 40 + (index / (labels.length - 1)) * 540;
     };
     const getY = (value: number) => 250 - (value / yAxisMax) * 240;
 
@@ -265,53 +265,58 @@ export class Renderer {
     for (let i = 0; i <= yTickCount; i++) {
         const y = getY(i * yTickValue);
         const value = i * yTickValue;
-        svgElements += `<line x1="${20}" y1="${y}" x2="580" y2="${y}" stroke="var(--border-color)" stroke-width="1"/>`;
-        svgElements += `<text x="${20 - 8}" y="${y + 4}" font-size="10" fill="var(--sub-text-color)" text-anchor="end">${value}</text>`;
+        svgElements += `<line x1="40" y1="${y}" x2="580" y2="${y}" stroke="var(--border-color)" stroke-width="1"/>`;
+        svgElements += `<text x="32" y="${y + 4}" font-size="10" fill="var(--sub-text-color)" text-anchor="end">${value}</text>`;
     }
 
     labels.forEach((label, index) => {
-        if (index % Math.ceil(labels.length / 12) === 0) {
+        if (labels.length > 1 && index % Math.ceil(labels.length / 12) === 0) {
             const x = getX(index);
             svgElements += `<text x="${x}" y="270" font-size="10" fill="var(--sub-text-color)" text-anchor="middle">${label}</text>`;
         }
     });
 
     series.forEach((s, seriesIndex) => {
-        const color = seriesColors[seriesIndex];
+        const color = seriesColors[seriesIndex % seriesColors.length];
         const points = s.data.map((value, index) => `${getX(index)},${getY(value)}`).join(' ');
         svgElements += `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"/>`;
     });
 
+    let legendHeight = 0;
     if (series.length > 1) {
-      const LEGEND_START_Y = 295;
+      const legendRows = Math.ceil(series.length / 3);
+      legendHeight = 15 + (legendRows * 20);
+
+      const LEGEND_START_Y = 285;
       const columnWidth = 560 / 3;
       series.forEach((s, seriesIndex) => {
         const rowIndex = Math.floor(seriesIndex / 3);
         const colIndex = seriesIndex % 3;
-        const legendX = 20 + (colIndex * columnWidth);
+        const legendX = 40 + (colIndex * columnWidth);
         const legendY = LEGEND_START_Y + (rowIndex * 20);
-        const color = seriesColors[seriesIndex];
+        const color = seriesColors[seriesIndex % seriesColors.length];
         svgElements += `<rect x="${legendX}" y="${legendY - 8}" width="12" height="8" fill="${color}" rx="2"/>`;
         svgElements += `<text x="${legendX + 18}" y="${legendY}" font-size="12" fill="var(--text-color)">${s.name}</text>`;
       });
     }
 
+    const svgHeight = 280 + legendHeight;
     const totalMessages = series.reduce((sum, s) => sum + s.data.reduce((a, b) => a + b, 0), 0);
     const cardHtml = `
-      <div class="container">
+      <div class="container" style="width: 600px;">
         <div class="header">
           <div class="stat-chip">总计: <span>${totalMessages.toLocaleString()}</span></div>
           <h1 class="title-text">${title}</h1>
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
         <div class="chart-wrapper">
-          <svg width="600" height="320" xmlns="http://www.w3.org/2000/svg">
+          <svg width="600" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">
             ${svgElements}
           </svg>
         </div>
       </div>`;
 
-    const chartStyles = ` .chart-wrapper { padding: 10px; } `;
+    const chartStyles = ` .chart-wrapper { padding: 10px; box-sizing: border-box; } `;
     const fullHtml = this.generateFullHtml(cardHtml, chartStyles);
     const imageBuffer = await this.htmlToImage(fullHtml);
     if (imageBuffer) yield imageBuffer;
@@ -334,14 +339,18 @@ export class Renderer {
     const maxWeight = Math.max(...weights, 1);
     const minWeight = Math.min(...weights);
 
+    const wordCount = words.length;
+    const maxFontSize = Math.max(20, Math.round(400 / Math.log1p(wordCount)));
+    const minFontSize = Math.max(4, Math.round(maxFontSize / 12));
+
     const cardHtml = `
-      <div class="container">
+      <div class="container" style="width: 600px;">
         <div class="header">
           <div class="stat-chip">词数: <span>${words.length}</span></div>
           <h1 class="title-text">${title}</h1>
           <div class="time-label">${time.toLocaleString('zh-CN', { hour12: false })}</div>
         </div>
-        <div style="width: 600px; height: 600px; margin: auto;">
+        <div style="width: 600px; height: 600px; margin: auto; padding: 10px 0;">
           <canvas id="wordcloud-container" width="600" height="600"></canvas>
         </div>
         <script>${wordCloudScript}</script>
@@ -351,22 +360,22 @@ export class Renderer {
             list: ${wordsJson},
             fontFamily: ${JSON.stringify(config.fontFamily)},
             weightFactor: (size) => {
-              if (${maxWeight} === ${minWeight}) return (${config.minFontSize} + ${config.maxFontSize}) / 2;
+              if (${maxWeight} === ${minWeight}) return (${minFontSize} + ${maxFontSize}) / 2;
               const normalizedWeight = (size - ${minWeight}) / (${maxWeight} - ${minWeight});
-              return ${config.minFontSize} + normalizedWeight * (${config.maxFontSize} - ${config.minFontSize});
+              return ${minFontSize} + normalizedWeight * (${maxFontSize} - ${minFontSize});
             },
             color: ${JSON.stringify(config.color)},
             shape: ${JSON.stringify(config.shape)},
-            gridSize: ${config.gridSize},
             ellipticity: ${config.ellipticity},
-            rotateRatio: ${config.rotateRatio},
             minRotation: ${config.minRotation},
             maxRotation: ${config.maxRotation},
             rotationSteps: ${config.rotationSteps},
             backgroundColor: 'transparent',
             clearCanvas: true,
             shrinkToFit: true,
+            rotateRatio: 1,
             shuffle: true,
+            gridSize: 1,
           };
 
           const maskImageUrl = ${JSON.stringify(config.maskImage)};

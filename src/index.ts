@@ -44,13 +44,9 @@ export interface Config {
   color: string;
   shape: string;
   ellipticity: number;
-  rotateRatio: number;
   minRotation: number;
   maxRotation: number;
   rotationSteps: number;
-  minFontSize: number;
-  maxFontSize: number;
-  gridSize: number;
   fontFamily: string;
   maskImage: string;
 }
@@ -79,16 +75,12 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description('高级分析配置'),
   Schema.object({
     ellipticity: Schema.number().min(0).max(1).default(1).description('长宽比'),
-    rotateRatio: Schema.number().min(0).max(1).default(0.5).description('旋转比'),
     rotationSteps: Schema.number().min(0).default(3).description('旋转步数'),
-    minRotation: Schema.number().default(0).description('最小旋转角'),
+    minRotation: Schema.number().default(-Math.PI / 2).description('最小旋转角'),
     maxRotation: Schema.number().default(Math.PI / 2).description('最大旋转角'),
-    minFontSize: Schema.number().min(1).default(4).description('最小字号'),
-    maxFontSize: Schema.number().min(1).default(64).description('最大字号'),
-    gridSize: Schema.number().min(0).default(1).description('词语间距'),
     color: Schema.string().default('random-light').description('词云颜色'),
     shape: Schema.string().default('square').description('词云形状'),
-    fontFamily: Schema.string().default('"Noto Sans CJK SC", "Arial", sans-serif').description('词云字体'),
+    fontFamily: Schema.string().default('"Noto Sans CJK SC", Arial, sans-serif').description('词云字体'),
     maskImage: Schema.string().role('link').description('蒙版图片'),
   }).description('词云生成配置'),
 ]);
