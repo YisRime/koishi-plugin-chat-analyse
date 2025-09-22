@@ -339,20 +339,34 @@ export class Renderer {
     const { title, time, words } = data;
     if (!words?.length) return;
 
-    const wordsJson = JSON.stringify(words);
     const weights = words.map(w => w[1]);
     const maxWeight = Math.max(...weights, 1);
     const minWeight = Math.max(Math.min(...weights), 1);
-
-    const wordCount = words.length;
-    let calculatedMaxFontSize = Math.round(2560 / Math.pow(wordCount, 0.66));
-    let calculatedMinFontSize = Math.round(calculatedMaxFontSize / 6);
-    const maxFontSize = Math.max(4, Math.min(128, calculatedMaxFontSize));
-    const minFontSize = Math.max(4, Math.min(maxFontSize, calculatedMinFontSize));
-
     const logMaxWeight = Math.log1p(maxWeight);
     const logMinWeight = Math.log1p(minWeight);
-    const logWeightRange = logMaxWeight - logMinWeight <= 0 ? 1 : logMaxWeight - logMinWeight;
+    const logWeightRange = logMaxWeight - logMinWeight;
+
+    const getRelativeFontSize = (size: number): number => {
+      if (logWeightRange <= 0) return 1;
+      const normalizedWeight = (Math.log1p(size) - logMinWeight) / logWeightRange;
+      return 0.05 + 0.95 * normalizedWeight;
+    };
+
+    let estimatedCurrentArea = 0;
+    const relativeFontSizes = words.map(word => getRelativeFontSize(word[1]));
+
+    for (let i = 0; i < words.length; i++) {
+      const wordText = words[i][0];
+      const relativeSize = relativeFontSizes[i];
+      estimatedCurrentArea += Math.pow(relativeSize, 2) * wordText.length * 0.6;
+    }
+
+    const scalingFactor = Math.sqrt(600 * 600 / Math.max(1, estimatedCurrentArea));
+    const wordList = words.map((word, i) => {
+      let finalSize = relativeFontSizes[i] * scalingFactor;
+      finalSize = Math.max(4, Math.min(128, finalSize));
+      return [word[0], finalSize];
+    });
 
     const cardHtml = `
       <div class="container" style="width: 600px;">
@@ -368,19 +382,15 @@ export class Renderer {
         <script>
           const canvas = document.getElementById('wordcloud-container');
           const options = {
-            list: ${wordsJson},
             fontFamily: ${JSON.stringify(config.fontFamily)},
-            weightFactor: (size) => {
-              if (${maxWeight} === ${minWeight}) return (${minFontSize} + ${maxFontSize}) / 2;
-              const normalizedWeight = (Math.log1p(size) - ${logMinWeight}) / (${logWeightRange});
-              return ${minFontSize} + normalizedWeight * (${maxFontSize} - ${minFontSize});
-            },
             color: ${JSON.stringify(config.color)},
             shape: ${JSON.stringify(config.shape)},
+            rotationSteps: ${config.rotationSteps},
             ellipticity: ${config.ellipticity},
             minRotation: ${config.minRotation},
             maxRotation: ${config.maxRotation},
-            rotationSteps: ${config.rotationSteps},
+            list: ${JSON.stringify(wordList)},
+            weightFactor: (size) => size,
             backgroundColor: 'transparent',
             drawOutOfBound: true,
             clearCanvas: false,
