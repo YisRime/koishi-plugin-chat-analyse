@@ -361,7 +361,7 @@ export class Renderer {
       estimatedCurrentArea += Math.pow(relativeSize, 2) * wordText.length * 0.6;
     }
 
-    const scalingFactor = Math.sqrt(600 * 600 / Math.max(1, estimatedCurrentArea));
+    const scalingFactor = Math.sqrt(600 * 600 * 0.8 / Math.max(1, estimatedCurrentArea));
     const wordList = words.map((word, i) => {
       let finalSize = relativeFontSizes[i] * scalingFactor;
       finalSize = Math.max(4, Math.min(128, finalSize));
