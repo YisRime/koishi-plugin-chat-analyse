@@ -17,7 +17,7 @@ export class Data {
 
   constructor(private ctx: Context, private config: any) {
     this.dataDir = path.join(this.ctx.baseDir, 'data', 'chat-analyse');
-    if (this.config.enableAutoBackup) this.ctx.cron('0 1 1 * *', () => { this.backupCache(); });
+    if (this.config.enableAutoBackup) this.ctx.cron('0 2 * * *', () => { this.backupCache(); });
   }
 
   /**
@@ -31,31 +31,28 @@ export class Data {
       const allUsers = await this.ctx.database.get('analyse_user', {});
       if (allUsers.length === 0) return;
       const uidToUserInfoMap = new Map(allUsers.map(u => [u.uid, u]));
-
-      const now = new Date();
-      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const year = lastMonthDate.getFullYear();
-      const monthIndex = lastMonthDate.getMonth();
+      const targetDate = new Date();
+      targetDate.setMonth(targetDate.getMonth() - 1);
+      const year = targetDate.getFullYear();
+      const monthIndex = targetDate.getMonth();
+      const day = targetDate.getDate();
       const monthString = (monthIndex + 1).toString().padStart(2, '0');
-      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+      const dayString = day.toString().padStart(2, '0');
+      const filename = `analyse_cache_${year}-${monthString}-${dayString}.json`;
+      const filepath = path.join(this.dataDir, filename);
+      const startDate = new Date(year, monthIndex, day);
+      const endDate = new Date(year, monthIndex, day + 1);
+      const records = await this.ctx.database.get('analyse_cache', { timestamp: { $gte: startDate, $lt: endDate } });
 
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dayString = day.toString().padStart(2, '0');
-        const filename = `analyse_cache_${year}-${monthString}-${dayString}.json`;
-        const filepath = path.join(this.dataDir, filename);
-        const startDate = new Date(year, monthIndex, day);
-        const endDate = new Date(year, monthIndex, day + 1);
-        const records = await this.ctx.database.get('analyse_cache', { timestamp: { $gte: startDate, $lt: endDate } });
+      if (records.length === 0) return;
+      const dataToExport = records.map(record => {
+        const userInfo = uidToUserInfoMap.get(record.uid);
+        if (!userInfo) return null;
+        const { id, uid, ...restOfRecord } = record;
+        return { userId: userInfo.userId, channelId: userInfo.channelId, ...restOfRecord };
+      }).filter(Boolean);
 
-        if (records.length === 0) continue;
-        const dataToExport = records.map(record => {
-          const userInfo = uidToUserInfoMap.get(record.uid);
-          if (!userInfo) return null;
-          const { id, uid, ...restOfRecord } = record;
-          return { userId: userInfo.userId, channelId: userInfo.channelId, ...restOfRecord };
-        }).filter(Boolean);
-        await fs.writeFile(filepath, JSON.stringify(dataToExport, null, 2));
-      }
+      if (dataToExport.length > 0) await fs.writeFile(filepath, JSON.stringify(dataToExport, null, 2));
     } catch (error) {
       this.ctx.logger.error('原始记录备份失败:', error);
     }
@@ -77,23 +74,31 @@ export class Data {
           await fs.mkdir(this.dataDir, { recursive: true });
           const allUsers = await this.ctx.database.get('analyse_user', {});
           const uidToUserInfoMap = new Map(allUsers.map(u => [u.uid, u]));
-
           for (const tableName of tablesToProcess) {
             const filepath = path.join(this.dataDir, `${tableName}.json`);
-            let dataToExport: any[];
-
-            if (tableName === 'analyse_user') {
-              dataToExport = allUsers.map(({ uid, ...rest }) => rest);
-            } else {
-              const records = await this.ctx.database.get(tableName, {}) as { uid: number }[];
-              dataToExport = records.map(record => {
-                const userInfo = uidToUserInfoMap.get(record.uid);
-                if (!userInfo) return null;
-                const { uid, ...restOfRecord } = record;
-                return { userId: userInfo.userId, channelId: userInfo.channelId, ...restOfRecord };
-              }).filter(Boolean);
+            const allDataToExport = [];
+            let offset = 0;
+            while (true) {
+              const batchRecords = await this.ctx.database.get(tableName as any, {}, {
+                limit: BATCH_SIZE,
+                offset: offset,
+              });
+              if (batchRecords.length === 0) break;
+              let processedBatch: any[];
+              if (tableName === 'analyse_user') {
+                processedBatch = batchRecords.map(({ uid, ...rest }) => rest);
+              } else {
+                processedBatch = batchRecords.map(record => {
+                  const userInfo = uidToUserInfoMap.get(record.uid);
+                  if (!userInfo) return null;
+                  const { uid, ...restOfRecord } = record;
+                  return { userId: userInfo.userId, channelId: userInfo.channelId, ...restOfRecord };
+                }).filter(Boolean);
+              }
+              allDataToExport.push(...processedBatch);
+              offset += BATCH_SIZE;
             }
-            await fs.writeFile(filepath, JSON.stringify(dataToExport, null, 2));
+            await fs.writeFile(filepath, JSON.stringify(allDataToExport, null, 2));
           }
           return '数据备份成功';
         } catch (error) {
