@@ -17,7 +17,7 @@ export class Data {
 
   constructor(private ctx: Context, private config: any) {
     this.dataDir = path.join(this.ctx.baseDir, 'data', 'chat-analyse');
-    if (this.config.enableAutoBackup) this.ctx.cron('0 2 * * *', () => { this.backupCache(); });
+    if (this.config.enableAutoBackup) this.ctx.cron('0 0 * * *', () => { this.backupCache(); });
   }
 
   /**
