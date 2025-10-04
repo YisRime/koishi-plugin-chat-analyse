@@ -38,7 +38,7 @@ export interface Config {
   atRetentionDays: number;
   rankRetentionDays: number;
   enableWordCloud: boolean;
-  MaxWords: number;
+  maxWords: number;
   cacheRetentionDays: number;
   enableSimilarActivity: boolean;
   enableAutoBackup: boolean;
@@ -50,6 +50,7 @@ export interface Config {
   rotationSteps: number;
   fontFamily: string;
   maskImage: string;
+  excludeWords: string;
 }
 
 /** @description 插件的配置项定义 */
@@ -75,7 +76,7 @@ export const Config: Schema<Config> = Schema.intersect([
     enableSimilarActivity: Schema.boolean().default(true).description('启用相似活跃分析'),
   }).description('高级分析配置'),
   Schema.object({
-    MaxWords: Schema.number().min(0).default(0).description('最大词量'),
+    maxWords: Schema.number().min(0).default(1024).description('最大词量'),
     ellipticity: Schema.number().min(0).max(1).default(1).description('长宽比'),
     rotationSteps: Schema.number().min(0).default(3).description('旋转步数'),
     minRotation: Schema.number().min(-Math.PI).max(Math.PI).default(-Math.PI / 2).description('最小旋转角'),
@@ -84,6 +85,7 @@ export const Config: Schema<Config> = Schema.intersect([
     color: Schema.string().default('random-light').description('词云颜色'),
     fontFamily: Schema.string().default('"Noto Sans CJK SC", Arial, sans-serif').description('词云字体'),
     maskImage: Schema.string().role('link').description('蒙版图片'),
+    excludeWords: Schema.string().role('textarea').description('屏蔽词'),
   }).description('词云生成配置'),
 ]);
 

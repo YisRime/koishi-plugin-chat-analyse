@@ -79,12 +79,15 @@ export class Analyse {
 
             if (!records.length) return '暂无统计数据';
 
+            const excludeWords = new Set(this.config.excludeWords.split(',').map(w => w.trim().toLowerCase()).filter(Boolean));
             const exclusionRegex = /\[(face|file|forward|img|gif|audio|video|json|rps|markdown|dice|at:.*?)\]/g;
             const allText = records.map(r => r.content.replace(exclusionRegex, '')).join(' ');
 
             const words = this.jieba.cut(allText).filter(w => {
-              if (w.trim().length <= 1) return false; // 过滤掉单个字
-              if (/^\d+$/.test(w)) return false;      // 过滤掉纯数字
+              const trimmedWord = w.trim();
+              if (trimmedWord.length <= 1) return false;
+              if (/^\d+$/.test(trimmedWord)) return false;
+              if (excludeWords.has(trimmedWord.toLowerCase())) return false;
               return true;
             });
 
@@ -92,7 +95,7 @@ export class Analyse {
 
             const wordCounts = words.reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>());
             const wordList = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
-            const limitedWordList = this.config.MaxWords > 0 ? wordList.slice(0, this.config.MaxWords) : wordList;
+            const limitedWordList = this.config.maxWords > 0 ? wordList.slice(0, this.config.maxWords) : wordList;
 
             const topWordsPreview = limitedWordList.slice(0, 10).map(item => item[0]).join(', ');
             session.send(`正在基于 ${wordList.length} 个词生成词云：${topWordsPreview}...`);
