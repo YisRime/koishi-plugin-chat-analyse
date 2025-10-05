@@ -85,7 +85,7 @@ export const Config: Schema<Config> = Schema.intersect([
     color: Schema.string().default('random-light').description('词云颜色'),
     fontFamily: Schema.string().default('"Noto Sans CJK SC", Arial, sans-serif').description('词云字体'),
     maskImage: Schema.string().role('link').description('蒙版图片'),
-    excludeWords: Schema.string().role('textarea').description('屏蔽词'),
+    excludeWords: Schema.string().role('textarea').default('').description('屏蔽词'),
   }).description('词云生成配置'),
 ]);
 
