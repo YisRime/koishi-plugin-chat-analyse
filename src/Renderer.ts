@@ -158,7 +158,7 @@ export class Renderer {
    */
   public async *renderList(data: ListRenderData, headers?: string[]): AsyncGenerator<Buffer> {
     const { title, time, list } = data;
-    const CHUNK_SIZE = 100;
+    const CHUNK_SIZE = 200;
     const totalItems = list.length;
     const countHeaderIndex = headers?.findIndex(h => ['总计发言', '条数', '次数', '数量'].includes(h)) ?? -1;
     const totalCount = data.total || (countHeaderIndex > -1 ? list.reduce((sum, row) => sum + (Number(row[countHeaderIndex]) || 0), 0) : totalItems);
