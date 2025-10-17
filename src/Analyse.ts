@@ -111,7 +111,7 @@ export class Analyse {
         });
     }
 
-    if (this.config.enableSimilarActivity) {
+    if (this.config.enableSimiActivity) {
       cmd.subcommand('simiactive', '相似活跃分析')
         .usage('分析你和群友的活跃规律，找出谁和你的作息最相似。')
         .option('hours', '-n <hours:number> 指定时长', { fallback: 24 })

@@ -40,7 +40,7 @@ export interface Config {
   enableWordCloud: boolean;
   maxWords: number;
   cacheRetentionDays: number;
-  enableSimilarActivity: boolean;
+  enableSimiActivity: boolean;
   enableAutoBackup: boolean;
   color: string;
   shape: string;
@@ -63,17 +63,17 @@ export const Config: Schema<Config> = Schema.intersect([
     enableCmdStat: Schema.boolean().default(true).description('启用命令统计'),
     enableMsgStat: Schema.boolean().default(true).description('启用消息统计'),
     enableActivity: Schema.boolean().default(true).description('启用活跃统计'),
+    enableSimiActivity: Schema.boolean().default(true).description('启用活跃比较'),
     enableRankStat: Schema.boolean().default(true).description('启用发言排行'),
-    rankRetentionDays: Schema.number().min(0).default(365).description('排行保留天数'),
     enableWhoAt: Schema.boolean().default(true).description('启用提及记录'),
+    rankRetentionDays: Schema.number().min(0).default(365).description('排行保留天数'),
     atRetentionDays: Schema.number().min(0).default(3).description('提及保留天数'),
   }).description('基础分析配置'),
   Schema.object({
     enableOriRecord: Schema.boolean().default(true).description('启用原始记录'),
-    cacheRetentionDays: Schema.number().min(0).default(31).description('记录保留天数'),
-    enableAutoBackup: Schema.boolean().default(false).description('启用自动备份'),
     enableWordCloud: Schema.boolean().default(true).description('启用词云生成'),
-    enableSimilarActivity: Schema.boolean().default(true).description('启用相似活跃分析'),
+    enableAutoBackup: Schema.boolean().default(true).description('启用自动归档'),
+    cacheRetentionDays: Schema.number().min(0).default(7).description('记录保留天数'),
   }).description('高级分析配置'),
   Schema.object({
     maxWords: Schema.number().min(0).default(1024).description('最大词量'),
@@ -162,5 +162,5 @@ export function apply(ctx: Context, config: Config) {
   new Stat(ctx, config).registerCommands(analyse);
   if (config.enableWhoAt) new WhoAt(ctx, config).registerCommand(analyse);
   if (config.enableDataIO) new Data(ctx, config).registerCommands(analyse);
-  if (config.enableWordCloud || config.enableSimilarActivity) new Analyse(ctx, config).registerCommands(analyse);
+  if (config.enableWordCloud || config.enableSimiActivity) new Analyse(ctx, config).registerCommands(analyse);
 }

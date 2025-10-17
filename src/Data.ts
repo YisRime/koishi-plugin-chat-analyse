@@ -32,7 +32,7 @@ export class Data {
       if (allUsers.length === 0) return;
       const uidToUserInfoMap = new Map(allUsers.map(u => [u.uid, u]));
       const targetDate = new Date();
-      targetDate.setMonth(targetDate.getMonth() - 1);
+      targetDate.setDate(targetDate.getDate() - 1);
       const year = targetDate.getFullYear();
       const monthIndex = targetDate.getMonth();
       const day = targetDate.getDate();
@@ -236,6 +236,51 @@ export class Data {
       });
 
     if (this.config.enableOriRecord) {
+      cmd.subcommand('.archive [date:date]', '手动归档', { authority: 4 })
+        .usage('手动归档指定日期的原始消息记录。默认归档前一天的记录。')
+        .action(async ({}, date) => {
+          const targetDate = date || new Date();
+          if (!date) targetDate.setDate(targetDate.getDate() - 1);
+
+          try {
+            await fs.mkdir(this.dataDir, { recursive: true });
+            const allUsers = await this.ctx.database.get('analyse_user', {});
+            if (allUsers.length === 0) return '暂无用户数据';
+
+            const uidToUserInfoMap = new Map(allUsers.map(u => [u.uid, u]));
+
+            const year = targetDate.getFullYear();
+            const monthIndex = targetDate.getMonth();
+            const day = targetDate.getDate();
+
+            const monthString = (monthIndex + 1).toString().padStart(2, '0');
+            const dayString = day.toString().padStart(2, '0');
+            const filename = `analyse_cache_${year}-${monthString}-${dayString}.json`;
+            const filepath = path.join(this.dataDir, filename);
+
+            const startDate = new Date(year, monthIndex, day);
+            const endDate = new Date(year, monthIndex, day + 1);
+
+            const records = await this.ctx.database.get('analyse_cache', { timestamp: { $gte: startDate, $lt: endDate } });
+            if (records.length === 0) return `暂无统计数据`;
+
+            const dataToExport = records.map(record => {
+              const userInfo = uidToUserInfoMap.get(record.uid);
+              if (!userInfo) return null;
+              const { id, uid, ...restOfRecord } = record;
+              return { userId: userInfo.userId, channelId: userInfo.channelId, ...restOfRecord };
+            }).filter(Boolean);
+
+            if (dataToExport.length > 0) {
+              await fs.writeFile(filepath, JSON.stringify(dataToExport, null, 2));
+              return `已归档${year}年${monthString}月${dayString}日的${dataToExport.length}条记录`;
+            }
+          } catch (error) {
+            this.ctx.logger.error('手动归档失败:', error);
+            return '手动归档失败';
+          }
+        });
+
       cmd.subcommand('.view [time:string]', '查询消息记录', { authority: 4 })
         .usage('查询指定时间点之前的消息记录，默认查询当前群组。')
         .option('user', '-u <user:string> 指定用户')
